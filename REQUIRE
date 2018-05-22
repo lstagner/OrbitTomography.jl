@@ -2,5 +2,7 @@ julia 0.6
 EFIT
 Equilibrium
 GuidingCenterOrbits
-NearestNeighbors
 HDF5
+Images
+Clustering
+StatsBase
