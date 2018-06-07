@@ -7,7 +7,6 @@ using Equilibrium
 using GuidingCenterOrbits
 using HDF5
 using Clustering
-using Distances
 using Images
 using StatsBase
 using FillArrays

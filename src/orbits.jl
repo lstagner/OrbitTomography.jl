@@ -1,5 +1,6 @@
 function orbit_grid(M::AxisymmetricEquilibrium, wall, e_range, p_range, r_range;
-                    nenergy=100, npitch=100, nr=100, norbits=1000, nstep=12000, tmax=1200.0, dl=0.0, combine=false)
+                    nenergy=100, npitch=100, nr=100, norbits=1000, nstep=12000,
+                    tmax=1200.0, dl=0.0, combine=false)
 
     eo = linspace(e_range...,nenergy)
     po = linspace(p_range...,npitch)
@@ -49,12 +50,10 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, e_range, p_range, r_range;
         coords = hcat((([o.coordinate.energy, o.coordinate.pitch, o.coordinate.r] .- mins)./norm
                        for o in orbs if o.class == oc)...)
 
-        cost_matrix = pairwise(Euclidean(), coords)
         if nk == 1
             if !combine
                 c = coords .* norm .+ mins
-                _, medoid_ind = findmin(mean(cost_matrix,2))
-                cc = orbs[inds_oc[medoid_ind]].coordinate
+                cc = EPRCoordinate(M,mean(c,2)...)
                 try
                     o = get_orbit(M, cc.energy,cc.pitch,cc.r,cc.z, nstep=nstep,tmax=tmax)
                     if dl > 0.0
@@ -73,11 +72,11 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, e_range, p_range, r_range;
             continue
         end
 
-        k = kmedoids(cost_matrix, nk)
+        k = kmeans(coords,nk)
         if !combine
-            medoids_inds = k.medoids
-            for i=1:length(medoids_inds)
-                cc = orbs[inds_oc[medoids_inds[i]]].coordinate
+            coords = k.centers.*norm .+ mins
+            for i=1:size(coords,2)
+                cc = EPRCoordinate(M,coords[1,i],coords[2,i],coords[3,i])
                 try
                     o = get_orbit(M, cc.energy, cc.pitch, cc.r, cc.z, nstep=nstep,tmax=tmax)
                     if dl > 0.0
