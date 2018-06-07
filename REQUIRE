@@ -5,4 +5,6 @@ GuidingCenterOrbits
 HDF5
 Images
 Clustering
+Distances
 StatsBase
+FillArrays

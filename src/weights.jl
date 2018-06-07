@@ -1,6 +1,9 @@
 abstract type AbstractWeight end
 
-struct FIDAOrbitWeight <:AbstractWeight
+struct FIDAOrbitWeight{T<:Real} <: AbstractWeight
     coordinate::EPRCoordinate
-    weight::Vector{Float64}
+    lambda::Vector{T}
+    weight::Vector{T}
 end
+
+
