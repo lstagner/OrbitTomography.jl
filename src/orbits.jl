@@ -49,12 +49,14 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, e_range, p_range, r_range;
         coords = hcat((([o.coordinate.energy, o.coordinate.pitch, o.coordinate.r] .- mins)./norm
                        for o in orbs if o.class == oc)...)
 
+        cost_matrix = pairwise(Euclidean(), coords)
         if nk == 1
             if !combine
                 c = coords .* norm .+ mins
-                cc = EPRCoordinate(M,mean(c,2)...)
+                _, medoid_ind = findmin(mean(cost_matrix,2))
+                cc = orbs[inds_oc[medoid_ind]].coordinate
                 try
-                    o = get_orbit(M, cc, nstep=nstep,tmax=tmax)
+                    o = get_orbit(M, cc.energy,cc.pitch,cc.r,cc.z, nstep=nstep,tmax=tmax)
                     if dl > 0.0
                         rpath = down_sample(o.path,mean_dl=dl)
                         o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,rpath)
@@ -71,13 +73,13 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, e_range, p_range, r_range;
             continue
         end
 
-        k = kmeans(coords, nk)
+        k = kmedoids(cost_matrix, nk)
         if !combine
-            coords = k.centers.*norm .+ mins
-            for i=1:size(coords,2)
-                cc = EPRCoordinate(M,coords[1,i],coords[2,i],coords[3,i])
+            medoids_inds = k.medoids
+            for i=1:length(medoids_inds)
+                cc = orbs[inds_oc[medoids_inds[i]]].coordinate
                 try
-                    o = get_orbit(M, cc, nstep=nstep,tmax=tmax)
+                    o = get_orbit(M, cc.energy, cc.pitch, cc.r, cc.z, nstep=nstep,tmax=tmax)
                     if dl > 0.0
                         rpath = down_sample(o.path,mean_dl=dl)
                         o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,rpath)
