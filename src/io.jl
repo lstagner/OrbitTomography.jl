@@ -233,7 +233,7 @@ function read_fidasim_distribution(filename::String)
     return d
 end
 
-function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits; filename="orbits.h5",time=0.0)
+function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; filename="orbits.h5",time=0.0,ntot=1e19)
 
     norbs = length(orbits)
     energy = Float64[]
@@ -255,7 +255,7 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits; filename
         append!(r, o.path.r*100)
         append!(z, o.path.z*100)
         append!(class, fill(Int16(i),length(o.path.r)))
-        append!(weight, o.path.dt.*(1e19/sum(o.path.dt)))
+        append!(weight, o.path.dt.*(ntot/sum(o.path.dt)))
         push!(tau_t, o.tau_t)
         push!(tau_p, o.tau_p)
         if isa(o.coordinate,EPRCoordinate)
