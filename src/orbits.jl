@@ -160,3 +160,17 @@ function combine_orbits(orbits)
 
     return Orbit(cc, class, tau_p, tau_t, path)
 end
+
+function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles; tmax=1200.0,nstep=12000)
+    orbits = @parallel (vcat) for i=1:d.npart
+        o = get_orbit(M,d.energy[i],M.sigma*d.pitch[i],d.r[i]/100,d.z[i]/100,tmax=tmax,nstep=nstep)
+        o.coordinate
+    end
+    return orbits
+end
+
+function fbm2orbit(M::AxisymmetricEquilibrium,d::FIDASIMGuidingCenterFunction; n=1_000_000)
+    dmc = fbm2mc(d,n=n)
+    return mc2orbit(M,dmc)
+end
+

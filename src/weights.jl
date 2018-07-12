@@ -5,5 +5,3 @@ struct FIDAOrbitWeight{T<:Real} <: AbstractWeight
     lambda::Vector{T}
     weight::Vector{T}
 end
-
-

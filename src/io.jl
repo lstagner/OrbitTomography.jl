@@ -325,6 +325,60 @@ function split_particles(d::FIDASIMFullOrbitParticles)
     return darr
 end
 
+function sample_array(x::Array{T,N},ns) where {T,N}
+    w_tot = sum(x)
+    l = length(x)
+    dims = size(x)
+    x_cum = cumsum(vec(x))
+    inds = zeros(Int,N,ns)
+    @inbounds for i=1:ns
+        p = rand()*w_tot
+        j = searchsortedfirst(x_cum,p,Base.Order.Forward)
+        inds[:,i] = collect(ind2sub(dims,j))
+    end
+    return inds
+end
+
+function sample_f(f::Array{T,N}, w, x, y, z; n=100) where {T,N}
+
+    inds = sample_array(f,n)
+    dw = abs(w[2]-w[1])
+    dx = abs(x[2]-x[1])
+    dy = abs(y[2]-y[1])
+    dz = abs(z[2]-z[1])
+
+    r = rand(N,n) - 0.5
+    xx = Array{Float64}(n)
+    yy = Array{Float64}(n)
+    zz = Array{Float64}(n)
+    ww = Array{Float64}(n)
+    o = Array{NTuple{4,Float64}}(n)
+    @inbounds for i=1:n
+        ww[i] = max(w[inds[1,i]] + r[1,i]*dw, 0.0)
+        xx[i] = x[inds[2,i]] + r[2,i]*dx
+        yy[i] = y[inds[3,i]] + r[3,i]*dy
+        zz[i] = z[inds[4,i]] + r[4,i]*dz
+    end
+
+    return ww, xx, yy, zz
+end
+
+function fbm2mc(d::FIDASIMGuidingCenterFunction; n=1_000_000)
+    fr = d.f .* reshape(d.r,(1,1,length(d.r),1))
+    dE = abs(d.energy[2] - d.energy[1])
+    dp = abs(d.pitch[2] - d.pitch[1])
+    dr = abs(d.r[2] - d.r[1])
+    dz = abs(d.z[2] - d.z[1])
+    ntot = sum(fr)*(2*pi*dE*dp*dr*dz)
+
+    energy, pitch, r, z = sample_f(fr,d.energy,d.pitch,d.r,d.z,n=n)
+    weight = fill(ntot/n,n)
+    nclass = 1
+    class = fill(1,n)
+
+    return FIDASIMGuidingCenterParticles(n,nclass,class,weight,r,z,energy,pitch)
+end
+
 struct FIDASIMBeamGeometry
     src::Vector{Float64}
     axis::Vector{Float64}
