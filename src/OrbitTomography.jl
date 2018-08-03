@@ -28,7 +28,7 @@ export epr_cov
 export RepeatedBlockDiagonal, ep_cov, eprz_cov
 
 include("orbits.jl")
-export orbit_grid, combine_orbits, fbm2orbit, mc2orbit
+export OrbitGrid, orbit_grid, combine_orbits, fbm2orbit, mc2orbit
 
 include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight
