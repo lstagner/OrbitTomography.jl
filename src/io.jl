@@ -254,7 +254,7 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
         append!(pitch, M.sigma*o.path.pitch)
         append!(r, o.path.r*100)
         append!(z, o.path.z*100)
-        append!(class, fill(Int16(i),length(o.path.r)))
+        append!(class, fill(i,length(o.path.r)))
         append!(weight, o.path.dt.*(ntot/sum(o.path.dt)))
         push!(tau_t, o.tau_t)
         push!(tau_p, o.tau_p)
