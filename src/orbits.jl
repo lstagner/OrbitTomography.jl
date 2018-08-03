@@ -16,6 +16,8 @@ end
 function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
                     norbits=1000, nstep=12000, tmax=1200.0, dl=0.0, combine=false,cluster=true)
 
+    !cluster && (combine=true)
+
     nenergy = length(eo)
     npitch = length(po)
     nr = length(ro)
