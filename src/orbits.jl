@@ -10,7 +10,7 @@ struct OrbitGrid{T}
 end
 
 function Base.show(io::IO, og::OrbitGrid)
-    println(io, "OrbitGrid: $(length(og.energy))×$(length(og.pitch))×$(length(og.r))")
+    print(io, "OrbitGrid: $(length(og.energy))×$(length(og.pitch))×$(length(og.r))")
 end
 
 function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;

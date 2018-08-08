@@ -233,62 +233,74 @@ function read_fidasim_distribution(filename::String)
     return d
 end
 
-function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; filename="orbits.h5",time=0.0,ntot=1e19)
+function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; filename="orbits.h5",time=0.0,ntot=1e19,chunksize=0)
 
-    norbs = length(orbits)
-    energy = Float64[]
-    pitch = Float64[]
-    r = Float64[]
-    z = Float64[]
-    weight = Float64[]
-    class = Int16[]
-    tau_t = Float64[]
-    tau_p = Float64[]
-    energy_c = Float64[]
-    pitch_c = Float64[]
-    r_c = Float64[]
-    z_c = Float64[]
-
-    for (i,o) in enumerate(orbits)
-        append!(energy,o.path.energy)
-        append!(pitch, M.sigma*o.path.pitch)
-        append!(r, o.path.r*100)
-        append!(z, o.path.z*100)
-        append!(class, fill(i,length(o.path.r)))
-        append!(weight, o.path.dt.*(ntot/sum(o.path.dt)))
-        push!(tau_t, o.tau_t)
-        push!(tau_p, o.tau_p)
-        if isa(o.coordinate,EPRCoordinate)
-            push!(energy_c, o.coordinate.energy)
-            push!(pitch_c, o.coordinate.pitch)
-            push!(r_c, o.coordinate.r)
-            push!(z_c, o.coordinate.z)
-        end
+    if chunksize == 0
+        orbs = (orbits,)
+        nchunks = 1
+    else
+        orbs = partition(orbits,chunksize)
+        nchunks = length(orbs)
     end
-    npart = length(energy)
 
-    h5open(filename,"w") do file
-        if length(energy_c) == norbs
-            file["energy_c","shuffle",(),"chunk",(norbs),"compress",4] = energy_c
-            file["pitch_c","shuffle",(),"chunk",(norbs),"compress",4] = pitch_c
-            file["r_c","shuffle",(),"chunk",(norbs),"compress",4] = r_c
-            file["z_c","shuffle",(),"chunk",(norbs),"compress",4] = z_c
+    @parallel for (io, oo) in enumerate(orbs)
+        norbs = length(oo)
+        energy = Float64[]
+        pitch = Float64[]
+        r = Float64[]
+        z = Float64[]
+        weight = Float64[]
+        class = Int[]
+        tau_t = Float64[]
+        tau_p = Float64[]
+        energy_c = Float64[]
+        pitch_c = Float64[]
+        r_c = Float64[]
+        z_c = Float64[]
+
+        for (i,o) in enumerate(oo)
+            append!(energy,o.path.energy)
+            append!(pitch, M.sigma*o.path.pitch)
+            append!(r, o.path.r*100)
+            append!(z, o.path.z*100)
+            append!(class, fill(i,length(o.path.r)))
+            append!(weight, o.path.dt.*(ntot/sum(o.path.dt)))
+            push!(tau_t, o.tau_t)
+            push!(tau_p, o.tau_p)
+            if isa(o.coordinate,EPRCoordinate)
+                push!(energy_c, o.coordinate.energy)
+                push!(pitch_c, o.coordinate.pitch)
+                push!(r_c, o.coordinate.r)
+                push!(z_c, o.coordinate.z)
+            end
         end
-        file["tau_p","shuffle",(),"chunk", (norbs),"compress", 4] = tau_p
-        file["tau_t","shuffle",(),"chunk", (norbs),"compress", 4] = tau_t
-        file["data_source"] = "Generated from GEQDSK"
-        file["type"] = 2
-        file["nclass"] = norbs
-        file["nparticle"] = npart
-        file["time"] = time
-        file["energy", "shuffle",(), "chunk", (npart),"compress", 4] = energy
-        file["pitch","shuffle",(), "chunk", (npart),"compress", 4] = pitch
-        file["r","shuffle",(), "chunk", (npart),"compress", 4] = r
-        file["z","shuffle",(), "chunk", (npart),"compress", 4] = z
-        file["class","shuffle",(), "chunk", (npart),"compress", 4] = class
-        file["weight","shuffle",(), "chunk", (npart),"compress", 4] = weight
-    end
+        npart = length(energy)
+        if chunksize != 0
+            fname= splitext(filename)[1]*@sprintf("_%04d_%04d.h5",io,nchunks)
+        end
+        h5open(fname,"w") do file
+            if length(energy_c) == norbs
+                file["energy_c","shuffle",(),"chunk",(norbs),"compress",4] = energy_c
+                file["pitch_c","shuffle",(),"chunk",(norbs),"compress",4] = pitch_c
+                file["r_c","shuffle",(),"chunk",(norbs),"compress",4] = r_c
+                file["z_c","shuffle",(),"chunk",(norbs),"compress",4] = z_c
+            end
+            file["tau_p","shuffle",(),"chunk", (norbs),"compress", 4] = tau_p
+            file["tau_t","shuffle",(),"chunk", (norbs),"compress", 4] = tau_t
+            file["data_source"] = "Generated from GEQDSK"
+            file["type"] = 2
+            file["nclass"] = norbs
+            file["nparticle"] = npart
+            file["time"] = time
+            file["energy", "shuffle",(), "chunk", (npart),"compress", 4] = energy
+            file["pitch","shuffle",(), "chunk", (npart),"compress", 4] = pitch
+            file["r","shuffle",(), "chunk", (npart),"compress", 4] = r
+            file["z","shuffle",(), "chunk", (npart),"compress", 4] = z
+            file["class","shuffle",(), "chunk", (npart),"compress", 4] = class
+            file["weight","shuffle",(), "chunk", (npart),"compress", 4] = weight
+        end
     nothing
+    end
 end
 
 function split_particles(d::FIDASIMGuidingCenterParticles)
