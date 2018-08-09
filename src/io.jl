@@ -243,11 +243,13 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
         nchunks = length(orbs)
     end
 
-    @parallel for (io, oo) in enumerate(orbs)
+    for (io, oo) in enumerate(orbs)
         norbs = length(oo)
         npart = sum(length(o.path.r) for o in oo)
         if chunksize != 0
             fname= splitext(filename)[1]*@sprintf("_%04d_%04d.h5",io,nchunks)
+        else
+            fname = filename
         end
         h5open(fname,"w") do file
             file["data_source"] = "Generated from GEQDSK"
@@ -266,12 +268,12 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
             end
 
             # create datasets
-            energy = d_create(file, "energy", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
-            pitch = d_create(file, "pitch", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
-            r = d_create(file, "r", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
-            z = d_create(file, "z", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
-            class = d_create(file, "class", datatype(Int32), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
-            weight = d_create(file, "weight", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
+            energy = d_create(file, "energy", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            pitch = d_create(file, "pitch", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            r = d_create(file, "r", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            z = d_create(file, "z", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            class = d_create(file, "class", datatype(Int32), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            weight = d_create(file, "weight", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
 
             # incrementally write to dataset
             istart = 1
@@ -287,8 +289,8 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
                 istart = istart + npath
             end
         end
-    nothing
     end
+    nothing
 end
 
 function split_particles(d::FIDASIMGuidingCenterParticles)
