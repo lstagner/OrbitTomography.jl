@@ -10,7 +10,8 @@ using Clustering
 using Images
 using StatsBase
 using FillArrays
-using Base.Iterators
+import Base.Iterators: partition
+import Iterators: nth
 
 include("spectra.jl")
 export InstrumentalResponse, kernel

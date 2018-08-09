@@ -243,7 +243,8 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
         nchunks = length(orbs)
     end
 
-    for (io, oo) in enumerate(orbs)
+    @sync @parallel for io = 1:length(orbs)
+        oo = nth(orbs,io)
         norbs = length(oo)
         npart = sum(length(o.path.r) for o in oo)
         if chunksize != 0
