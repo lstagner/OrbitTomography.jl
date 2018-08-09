@@ -245,59 +245,47 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
 
     @parallel for (io, oo) in enumerate(orbs)
         norbs = length(oo)
-        energy = Float64[]
-        pitch = Float64[]
-        r = Float64[]
-        z = Float64[]
-        weight = Float64[]
-        class = Int[]
-        tau_t = Float64[]
-        tau_p = Float64[]
-        energy_c = Float64[]
-        pitch_c = Float64[]
-        r_c = Float64[]
-        z_c = Float64[]
-
-        for (i,o) in enumerate(oo)
-            append!(energy,o.path.energy)
-            append!(pitch, M.sigma*o.path.pitch)
-            append!(r, o.path.r*100)
-            append!(z, o.path.z*100)
-            append!(class, fill(i,length(o.path.r)))
-            append!(weight, o.path.dt.*(ntot/sum(o.path.dt)))
-            push!(tau_t, o.tau_t)
-            push!(tau_p, o.tau_p)
-            if isa(o.coordinate,EPRCoordinate)
-                push!(energy_c, o.coordinate.energy)
-                push!(pitch_c, o.coordinate.pitch)
-                push!(r_c, o.coordinate.r)
-                push!(z_c, o.coordinate.z)
-            end
-        end
-        npart = length(energy)
+        npart = sum(length(o.path.r) for o in oo)
         if chunksize != 0
             fname= splitext(filename)[1]*@sprintf("_%04d_%04d.h5",io,nchunks)
         end
         h5open(fname,"w") do file
-            if length(energy_c) == norbs
-                file["energy_c","shuffle",(),"chunk",(norbs),"compress",4] = energy_c
-                file["pitch_c","shuffle",(),"chunk",(norbs),"compress",4] = pitch_c
-                file["r_c","shuffle",(),"chunk",(norbs),"compress",4] = r_c
-                file["z_c","shuffle",(),"chunk",(norbs),"compress",4] = z_c
-            end
-            file["tau_p","shuffle",(),"chunk", (norbs),"compress", 4] = tau_p
-            file["tau_t","shuffle",(),"chunk", (norbs),"compress", 4] = tau_t
             file["data_source"] = "Generated from GEQDSK"
-            file["type"] = 2
             file["nclass"] = norbs
             file["nparticle"] = npart
             file["time"] = time
-            file["energy", "shuffle",(), "chunk", (npart),"compress", 4] = energy
-            file["pitch","shuffle",(), "chunk", (npart),"compress", 4] = pitch
-            file["r","shuffle",(), "chunk", (npart),"compress", 4] = r
-            file["z","shuffle",(), "chunk", (npart),"compress", 4] = z
-            file["class","shuffle",(), "chunk", (npart),"compress", 4] = class
-            file["weight","shuffle",(), "chunk", (npart),"compress", 4] = weight
+            file["type"] = 2
+            file["tau_p","shuffle",(),"chunk", (norbs),"compress", 4] = [o.tau_p for o in oo]
+            file["tau_t","shuffle",(),"chunk", (norbs),"compress", 4] = [o.tau_t for o in oo]
+
+            if isa(oo[1].coordinate, EPRCoordinate)
+                file["energy_c","shuffle",(),"chunk",(norbs),"compress",4] = [o.coordinate.energy for o in oo]
+                file["pitch_c","shuffle",(),"chunk",(norbs),"compress",4] = [o.coordinate.pitch for o in oo]
+                file["r_c","shuffle",(),"chunk",(norbs),"compress",4] = [o.coordinate.r for o in oo]
+                file["z_c","shuffle",(),"chunk",(norbs),"compress",4] = [o.coordinate.z for o in oo]
+            end
+
+            # create datasets
+            energy = d_create(file, "energy", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
+            pitch = d_create(file, "pitch", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
+            r = d_create(file, "r", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
+            z = d_create(file, "z", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
+            class = d_create(file, "class", datatype(Int32), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
+            weight = d_create(file, "weight", datatype(Float64), dataspace(npart), "shuffle", (), "chunk", (npart), "compress", 4)
+
+            # incrementally write to dataset
+            istart = 1
+            for (i,o) in enumerate(oo)
+                npath = length(o.path.energy)
+                iend = istart + npath - 1
+                energy[istart:iend] = o.path.energy
+                pitch[istart:iend] = M.sigma*o.path.pitch
+                r[istart:iend] = o.path.r*100
+                z[istart:iend] = o.path.z*100
+                class[istart:iend] = fill(i,npath)
+                weight[istart:iend] = o.path.dt.*(ntot/sum(o.path.dt))
+                istart = istart + npath
+            end
         end
     nothing
     end
