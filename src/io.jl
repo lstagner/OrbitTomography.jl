@@ -43,7 +43,7 @@ function split_spectra(s::FIDASIMSpectra)
 
     nlambda, nchan, nclass = size(s.fida)
 
-    ss = Array{typeof(s)}(nclass)
+    ss = Array{typeof(s)}(undef,nclass)
     for i=1:nclass
         sss = FIDASIMSpectra(nchan, nlambda, s.lambda, s.full, s.half, s.third,
                              s.dcx, s.halo, s.cold, s.fida[:,:,i], s.pfida[:,:,i])
@@ -303,7 +303,7 @@ function split_particles(d::FIDASIMGuidingCenterParticles)
 
     d.nclass <= 1 && return d
 
-    darr = Array{typeof(d)}(d.nclass)
+    darr = Array{typeof(d)}(undef,d.nclass)
     for c = 1:d.nclass
         w = d.class .== c
         npart = sum(w)
@@ -320,7 +320,7 @@ function split_particles(d::FIDASIMFullOrbitParticles)
 
     d.nclass <= 1 && return d
 
-    darr = Array{typeof(d)}(d.nclass)
+    darr = Array{typeof(d)}(undef,d.nclass)
     for c = 1:d.nclass
         w = d.class .== c
         npart = sum(w)
@@ -356,11 +356,11 @@ function sample_f(f::Array{T,N}, w, x, y, z; n=100) where {T,N}
     dz = abs(z[2]-z[1])
 
     r = rand(N,n) - 0.5
-    xx = Array{Float64}(n)
-    yy = Array{Float64}(n)
-    zz = Array{Float64}(n)
-    ww = Array{Float64}(n)
-    o = Array{NTuple{4,Float64}}(n)
+    xx = zeros(n)
+    yy = zeros(n)
+    zz = zeros(n)
+    ww = zeros(n)
+    o = Array{NTuple{4,Float64}}(undef,n)
     @inbounds for i=1:n
         ww[i] = max(w[inds[1,i]] + r[1,i]*dw, 0.0)
         xx[i] = x[inds[2,i]] + r[2,i]*dx
