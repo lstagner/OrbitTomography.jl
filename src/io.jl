@@ -107,7 +107,7 @@ function apply_instrumental!(s::FIDASIMSpectra,instr::Vector,dL::Vector)
     end
 end
 
-function apply_instrumental!(s::FIDASIMSpectra, instr)
+function apply_instrumental!(s::FIDASIMSpectra, instr::AbstractVector)
     dL = fill(abs(s.lambda[2]-s.lambda[1]),s.nchan)
     apply_instrumental!(s, instr, dL)
 end
