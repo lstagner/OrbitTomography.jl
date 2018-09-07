@@ -31,8 +31,9 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
     tau_p = zeros(Float64,nenergy,npitch,nr)
 
     norbs = nenergy*npitch*nr
-    orbs = @parallel (vcat) for i=1:norbs
-        ie,ip,ir = ind2sub((nenergy,npitch,nr),i)
+    subs = CartesianIndices((nenergy,npitch,nr))
+    orbs = @distributed (vcat) for i=1:norbs
+        ie,ip,ir = Tuple(subs[i])
         c = EPRCoordinate(M,eo[ie],po[ip],ro[ir])
         try
             o = get_orbit(M, c, nstep=nstep, tmax=tmax)
@@ -54,10 +55,9 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
         o
     end
     for i=1:norbs
-        ie,ip,ir = ind2sub((nenergy,npitch,nr),i)
-        class[ie,ip,ir] = orbs[i].class
-        tau_p[ie,ip,ir] = orbs[i].tau_p
-        tau_t[ie,ip,ir] = orbs[i].tau_t
+        class[subs[i]] = orbs[i].class
+        tau_p[subs[i]] = orbs[i].tau_p
+        tau_t[subs[i]] = orbs[i].tau_t
     end
 
     orbs_index = filter(i -> orbs[i].class != :incomplete, 1:norbs)
@@ -84,14 +84,14 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
             nk = norbits - nclusters
         end
         nk == 0 && continue
-        inds_oc = find([o.class == oc for o in orbs])
+        inds_oc = findall([o.class == oc for o in orbs])
         coords = hcat((([o.coordinate.energy, o.coordinate.pitch, o.coordinate.r] .- mins)./norm
                        for o in orbs if o.class == oc)...)
 
         if nk == 1
             if !combine
                 c = coords .* norm .+ mins
-                cc = EPRCoordinate(M,mean(c,2)...)
+                cc = EPRCoordinate(M,mean(c,dims=2)...)
                 try
                     o = get_orbit(M, cc.energy,cc.pitch,cc.r,cc.z, nstep=nstep,tmax=tmax)
                     if dl > 0.0
@@ -110,7 +110,7 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
                 push!(orbits,o)
                 orbit_num = orbit_num + 1
             end
-            index[orbs_index[inds_oc]] = orbit_num
+            index[orbs_index[inds_oc]] .= orbit_num
             continue
         end
 
@@ -134,7 +134,7 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
                     push!(orbits,o)
                     orbit_num = orbit_num + 1
                 end
-                index[orbs_index[inds_oc[w]]] = orbit_num
+                index[orbs_index[inds_oc[w]]] .= orbit_num
             end
         else
             for i=1:nk
@@ -143,7 +143,7 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
                 o = combine_orbits(orbs[inds_oc[w]])
                 push!(orbits,o)
                 orbit_num = orbit_num + 1
-                index[orbs_index[inds_oc[w]]] = orbit_num
+                index[orbs_index[inds_oc[w]]] .= orbit_num
             end
         end
         nclusters = nclusters + nk
@@ -219,7 +219,7 @@ function combine_orbits(orbits)
 end
 
 function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles; tmax=1200.0,nstep=12000)
-    orbits = @parallel (vcat) for i=1:d.npart
+    orbits = @distributed (vcat) for i=1:d.npart
         o = get_orbit(M,d.energy[i],M.sigma*d.pitch[i],d.r[i]/100,d.z[i]/100,tmax=tmax,nstep=nstep)
         o.coordinate
     end

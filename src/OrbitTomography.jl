@@ -2,6 +2,13 @@ __precompile__()
 
 module OrbitTomography
 
+using LinearAlgebra
+using Statistics
+using SparseArrays
+using Distributed
+using Printf
+import Base.Iterators: partition
+
 using EFIT
 using Equilibrium
 using GuidingCenterOrbits
@@ -10,8 +17,7 @@ using Clustering
 using Images
 using StatsBase
 using FillArrays
-import Base.Iterators: partition
-import Iterators: nth
+import IterTools: nth
 
 include("spectra.jl")
 export InstrumentalResponse, kernel

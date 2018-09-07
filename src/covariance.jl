@@ -57,7 +57,7 @@ function Base.getindex(A::RepeatedBlockDiagonal,I::Int...)
     return div(i-1,ni) == div(j-1,nj) ? A.data[ii,jj] : zero(eltype(A.data))
 end
 
-Base.getindex(A::RepeatedBlockDiagonal,I::Int) = A[ind2sub(size(A),I)...]
+Base.getindex(A::RepeatedBlockDiagonal,I::Int) = A[CartesianIndices(A)[I]]
 
 function RepeatedBlockDiagonal(A::Matrix,n::Int)
     RepeatedBlockDiagonal{eltype(A),2,typeof(A)}(A,n)
@@ -106,11 +106,12 @@ function ep_cov(energy, pitch, sigE, sigp)
     Σ_ep = zeros(nep,nep)
     x = zeros(2)
     y = zeros(2)
+    subs = CartesianIndices((nenergy,npitch))
     for i=1:nep
-        ie,ip = ind2sub((nenergy,npitch),i)
+        ie,ip = Tuple(subs[i])
         x .= [energy[ie],pitch[ip]]
         for j=i:nep
-            je,jp = ind2sub((nenergy,npitch),j)
+            je,jp = Tuple(subs[j])
             y .= [energy[je],pitch[jp]]
 
             l = (x .- y)'*inv(Diagonal([sigE,sigp].^2))*(x .- y)
