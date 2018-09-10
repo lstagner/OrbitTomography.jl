@@ -19,15 +19,30 @@ function FIDASIMSpectra(fname::String)
     nchan = Int(read(f["nchan"]))
     lambda = read(f["lambda"])
     nlam = length(lambda)
+    vars = names(f)
 
-    full = "full" in names(f) ? read(f["full"]) : Zeros(nlam,nchan)
-    half = "half" in names(f) ? read(f["half"]) : Zeros(nlam,nchan)
-    third = "third" in names(f) ? read(f["third"]) : Zeros(nlam,nchan)
-    dcx = "dcx" in names(f) ? read(f["dcx"]) : Zeros(nlam,nchan)
-    halo = "halo" in names(f) ? read(f["halo"]) : Zeros(nlam,nchan)
-    cold = "cold" in names(f) ? read(f["cold"]) : Zeros(nlam,nchan)
-    fida = "fida" in names(f) ? read(f["fida"]) : Zeros(nlam,nchan)
-    pfida = "pfida" in names(f) ? read(f["pfida"]) : Zeros(size(fida))
+    full = "full" in vars ? read(f["full"]) : Zeros(nlam,nchan)
+    half = "half" in vars ? read(f["half"]) : Zeros(nlam,nchan)
+    third = "third" in vars ? read(f["third"]) : Zeros(nlam,nchan)
+    dcx = "dcx" in vars ? read(f["dcx"]) : Zeros(nlam,nchan)
+    halo = "halo" in vars ? read(f["halo"]) : Zeros(nlam,nchan)
+    cold = "cold" in vars ? read(f["cold"]) : Zeros(nlam,nchan)
+    if ("pfida" in vars) && !("fida" in vars)
+        pfida = read(f["pfida"])
+        fida = Zeros(size(pfida))
+    end
+    if !("pfida" in vars) && ("fida" in vars)
+        fida = read(f["fida"])
+        pfida = Zeros(size(fida))
+    end
+    if ("pfida" in vars) && ("fida" in vars)
+        fida = read(f["fida"])
+        pfida = read(f["pfida"])
+    end
+    if !("pfida" in vars) && !("fida" in vars)
+        fida = Zeros(nlam,nchan)
+        pfida = Zeros(size(fida))
+    end
 
     return FIDASIMSpectra(Int(nchan),Int(nlam),lambda,full,half,third,dcx,halo,cold,fida,pfida)
 end
@@ -39,7 +54,7 @@ function Base.show(io::IO, s::FIDASIMSpectra)
 end
 
 function split_spectra(s::FIDASIMSpectra)
-    length(size(s.fida)) == 2 && return s
+    (length(size(s.fida)) == 2) && (length(size(s.pfida)) == 2) && return s
 
     nlambda, nchan, nclass = size(s.fida)
 
