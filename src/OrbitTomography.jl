@@ -1,4 +1,4 @@
-__precompile__()
+#__precompile__()
 
 module OrbitTomography
 
@@ -36,7 +36,7 @@ export epr_cov
 export RepeatedBlockDiagonal, ep_cov, eprz_cov
 
 include("orbits.jl")
-export OrbitGrid, orbit_grid, combine_orbits, fbm2orbit, mc2orbit
+export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
 
 include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight

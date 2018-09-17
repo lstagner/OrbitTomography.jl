@@ -3,7 +3,7 @@ struct OrbitGrid{T}
     pitch::AbstractVector{T}
     r::AbstractVector{T}
     counts::Vector{Int}
-    index::Array{Int,3}
+    orbit_index::Array{Int,3}
     class::Array{Symbol,3}
     tau_p::Array{T,3}
     tau_t::Array{T,3}
@@ -14,18 +14,13 @@ function Base.show(io::IO, og::OrbitGrid)
 end
 
 function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
-                    norbits=1000, nstep=12000, tmax=1200.0, dl=0.0, combine=false,cluster=true)
-
-    !cluster && (combine=true)
+                    nstep=12000, tmax=1200.0, dl=0.0, store_path=false)
 
     nenergy = length(eo)
     npitch = length(po)
     nr = length(ro)
-    e_range = extrema(eo)
-    p_range = extrema(po)
-    r_range = extrema(ro)
 
-    index = zeros(Int,nenergy,npitch,nr)
+    orbit_index = zeros(Int,nenergy,npitch,nr)
     class = fill(:incomplete,(nenergy,npitch,nr))
     tau_t = zeros(Float64,nenergy,npitch,nr)
     tau_p = zeros(Float64,nenergy,npitch,nr)
@@ -43,14 +38,13 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
 
         if o.class == :incomplete || o.class == :degenerate || hits_wall(o,wall)
             o = Orbit(o.coordinate,:incomplete)
-        else
+        elseif store_path
             if dl > 0.0
                 rpath = down_sample(o.path,mean_dl=dl)
                 o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,rpath)
             end
-            if !combine
-                o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,OrbitPath(typeof(o.tau_p)))
-            end
+        else
+            o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,OrbitPath(typeof(o.tau_p)))
         end
         o
     end
@@ -60,23 +54,43 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
         tau_t[subs[i]] = orbs[i].tau_t
     end
 
-    orbs_index = filter(i -> orbs[i].class != :incomplete, 1:norbs)
+    grid_index = filter(i -> orbs[i].class != :incomplete, 1:norbs)
     orbs = filter(x -> x.class != :incomplete, orbs)
     norbs = length(orbs)
+    orbit_index[grid_index] = 1:norbs
 
-    if !cluster
-        index[orbs_index] = 1:norbs
-        return orbs, OrbitGrid(eo,po,ro,fill(1,norbs),index,class,tau_p,tau_t)
-    end
+    return orbs, OrbitGrid(eo,po,ro,fill(1,norbs),orbit_index,class,tau_p,tau_t)
+
+end
+
+function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, orbits::Vector;
+                        norbits=1000, dl=0.0, nstep = 12000, tmax=1200.0, combine=(length(orbits[1].path) != 0))
+
+    eo = orbit_grid.energy
+    po = orbit_grid.pitch
+    ro = orbit_grid.r
+
+    nenergy = length(eo)
+    npitch = length(po)
+    nr = length(ro)
+    norbs = length(orbits)
+
+    e_range = extrema(eo)
+    p_range = extrema(po)
+    r_range = extrema(ro)
+
+    orbs_index = [findfirst(isequal(i), orbit_grid.orbit_index) for i=1:norbs]
+    orbit_index = zeros(Int,nenergy,npitch,nr)
 
     norm = abs.([-(e_range...), -(p_range...), -(r_range...)])
     mins = [e_range[1],p_range[1],r_range[1]]
     oclasses = [:potato, :stagnation, :trapped, :co_passing, :ctr_passing]
 
-    orbit_counts = Dict{Symbol,Int}(o=>count(x -> x.class == o, orbs)
+    orbit_counts = Dict{Symbol,Int}(o=>count(x -> x.class == o, orbits)
                                     for o in oclasses)
+
     nclusters = 0
-    orbits = eltype(orbs)[]
+    orbs = eltype(orbits)[]
     orbit_num = 0
     for oc in oclasses
         nk = max(Int(ceil(norbits*orbit_counts[oc]/norbs)),1)
@@ -84,9 +98,9 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
             nk = norbits - nclusters
         end
         nk == 0 && continue
-        inds_oc = findall([o.class == oc for o in orbs])
+        inds_oc = findall([o.class == oc for o in orbits])
         coords = hcat((([o.coordinate.energy, o.coordinate.pitch, o.coordinate.r] .- mins)./norm
-                       for o in orbs if o.class == oc)...)
+                       for o in orbits if o.class == oc)...)
 
         if nk == 1
             if !combine
@@ -98,19 +112,20 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
                         rpath = down_sample(o.path,mean_dl=dl)
                         o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,rpath)
                     end
-                    push!(orbits,o)
+                    push!(orbs,o)
                     orbit_num = orbit_num + 1
                 catch
                     o = Orbit(cc)
-                    push!(orbits,o)
+                    push!(orbs,o)
                     orbit_num = orbit_num + 1
                 end
             else
-                o = combine_orbits(orbs[inds_oc])
-                push!(orbits,o)
+                o = combine_orbits(orbits[inds_oc])
+                push!(orbs,o)
                 orbit_num = orbit_num + 1
             end
-            index[orbs_index[inds_oc]] .= orbit_num
+            orbit_index[orbs_index[inds_oc]] .= orbit_num
+            nclusters = nclusters + nk
             continue
         end
 
@@ -127,30 +142,30 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
                         rpath = down_sample(o.path,mean_dl=dl)
                         o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,rpath)
                     end
-                    push!(orbits,o)
+                    push!(orbs,o)
                     orbit_num = orbit_num + 1
                 catch
                     o = Orbit(cc)
-                    push!(orbits,o)
+                    push!(orbs,o)
                     orbit_num = orbit_num + 1
                 end
-                index[orbs_index[inds_oc[w]]] .= orbit_num
+                orbit_index[orbs_index[inds_oc[w]]] .= orbit_num
             end
         else
             for i=1:nk
                 w = k.assignments .== i
                 sum(w) == 0 && continue
-                o = combine_orbits(orbs[inds_oc[w]])
-                push!(orbits,o)
+                o = combine_orbits(orbits[inds_oc[w]])
+                push!(orbs,o)
                 orbit_num = orbit_num + 1
-                index[orbs_index[inds_oc[w]]] .= orbit_num
+                orbit_index[orbs_index[inds_oc[w]]] .= orbit_num
             end
         end
         nclusters = nclusters + nk
     end
 
-    counts = [count(x -> x == i, index) for i=1:length(orbits)]
-    return orbits, OrbitGrid(eo,po,ro,counts,index,class,tau_p,tau_t)
+    counts = [count(x -> x == i, orbit_index) for i=1:length(orbs)]
+    return orbs, OrbitGrid(eo,po,ro,counts,orbit_index,orbit_grid.class,orbit_grid.tau_p,orbit_grid.tau_t)
 
 end
 
@@ -158,7 +173,7 @@ function Base.map(grid::OrbitGrid, f::Vector)
     if length(grid.counts) != length(f)
         throw(ArgumentError("Incompatible sizes"))
     end
-    return [i == 0 ? 0.0 : f[i]/grid.counts[i] for i in grid.index]
+    return [i == 0 ? zero(f[1]) : f[i]/grid.counts[i] for i in grid.index]
 end
 
 function combine_orbits(orbits)
