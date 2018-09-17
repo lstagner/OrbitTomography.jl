@@ -78,8 +78,10 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
     e_range = extrema(eo)
     p_range = extrema(po)
     r_range = extrema(ro)
+    vec_orbit_index = vec(orbit_grid.orbit_index)
+    orbs_index = [findfirst(isequal(i), vec_orbit_index) for i=1:norbs]
 
-    orbs_index = [findfirst(isequal(i), orbit_grid.orbit_index) for i=1:norbs]
+    println("orbit_index calculated")
     orbit_index = zeros(Int,nenergy,npitch,nr)
 
     norm = abs.([-(e_range...), -(p_range...), -(r_range...)])
@@ -98,6 +100,7 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
             nk = norbits - nclusters
         end
         nk == 0 && continue
+        println(oc," ",nk)
         inds_oc = findall([o.class == oc for o in orbits])
         coords = hcat((([o.coordinate.energy, o.coordinate.pitch, o.coordinate.r] .- mins)./norm
                        for o in orbits if o.class == oc)...)
