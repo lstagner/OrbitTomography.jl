@@ -78,15 +78,13 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
     e_range = extrema(eo)
     p_range = extrema(po)
     r_range = extrema(ro)
-    vec_orbit_index = vec(orbit_grid.orbit_index)
     orbs_index = zeros(Int,norbs)
-    for i = 1:length(vec_orbit_index)
-        ii = vec_orbit_index[i]
+    for i = 1:length(orbit_grid.orbit_index)
+        ii = orbit_grid.orbit_index[i]
         ii == 0 && continue
         orbs_index[ii] != 0 && continue
         orbs_index[ii] = i
     end
-    #orbs_index = [findfirst(isequal(i), vec_orbit_index) for i=1:norbs]
 
     orbit_index = zeros(Int,nenergy,npitch,nr)
 

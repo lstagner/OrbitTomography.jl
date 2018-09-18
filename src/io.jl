@@ -263,8 +263,8 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
         nchunks = length(orbs)
     end
 
-    #@sync @distributed for io = 1:length(orbs)
-    for io = 1:length(orbs)
+    #for io = 1:length(orbs)
+    @sync @distributed for io = 1:length(orbs)
         oo = nth(orbs,io)
         norbs = length(oo)
         npart = sum(length(o.path.r) for o in oo)
@@ -289,34 +289,34 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
                 file["z_c","shuffle",(),"chunk",(norbs),"compress",4] = [o.coordinate.z for o in oo]
             end
 
-            file["energy","shuffle",(),"chunk",(npart),"compress",4] = vcat((o.path.energy for o in oo)...)
-            file["pitch","shuffle",(),"chunk",(npart),"compress",4] = vcat((M.sigma*o.path.pitch for o in oo)...)
-            file["r","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.r for o in oo)...)
-            file["z","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.z for o in oo)...)
-            file["class","shuffle",(),"chunk",(npart),"compress",4] = vcat((fill(Int16(i),length(o.path)) for (i,o) in enumerate(oo))...)
-            file["weight","shuffle",(),"chunk",(npart),"compress",4] = vcat((o.path.dt.*(ntot/sum(o.path.dt)) for o in oo)...)
+            #file["energy","shuffle",(),"chunk",(npart),"compress",4] = vcat((o.path.energy for o in oo)...)
+            #file["pitch","shuffle",(),"chunk",(npart),"compress",4] = vcat((M.sigma*o.path.pitch for o in oo)...)
+            #file["r","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.r for o in oo)...)
+            #file["z","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.z for o in oo)...)
+            #file["class","shuffle",(),"chunk",(npart),"compress",4] = vcat((fill(Int16(i),length(o.path)) for (i,o) in enumerate(oo))...)
+            #file["weight","shuffle",(),"chunk",(npart),"compress",4] = vcat((o.path.dt.*(ntot/sum(o.path.dt)) for o in oo)...)
 
             # create datasets
-            #energy = d_create(file, "energy", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
-            #pitch = d_create(file, "pitch", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
-            #r = d_create(file, "r", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
-            #z = d_create(file, "z", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
-            #class = d_create(file, "class", datatype(Int32), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
-            #weight = d_create(file, "weight", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            energy = d_create(file, "energy", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            pitch = d_create(file, "pitch", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            r = d_create(file, "r", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            z = d_create(file, "z", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            class = d_create(file, "class", datatype(Int32), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
+            weight = d_create(file, "weight", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
 
-            ## incrementally write to dataset
-            #istart = 1
-            #for (i,o) in enumerate(oo)
-            #    npath = length(o.path.energy)
-            #    iend = istart + npath - 1
-            #    energy[istart:iend] = o.path.energy
-            #    pitch[istart:iend] = M.sigma*o.path.pitch
-            #    r[istart:iend] = o.path.r*100
-            #    z[istart:iend] = o.path.z*100
-            #    class[istart:iend] = fill(i,npath)
-            #    weight[istart:iend] = o.path.dt.*(ntot/sum(o.path.dt))
-            #    istart = istart + npath
-            #end
+            # incrementally write to dataset
+            istart = 1
+            for (i,o) in enumerate(oo)
+                npath = length(o.path.energy)
+                iend = istart + npath - 1
+                energy[istart:iend] = o.path.energy
+                pitch[istart:iend] = M.sigma*o.path.pitch
+                r[istart:iend] = o.path.r*100
+                z[istart:iend] = o.path.z*100
+                class[istart:iend] = fill(i,npath)
+                weight[istart:iend] = o.path.dt.*(ntot/sum(o.path.dt))
+                istart = istart + npath
+            end
         end
     end
     nothing
