@@ -28,7 +28,7 @@ export FIDASIMSpectra, split_spectra, merge_spectra, apply_instrumental!
 export AbstractDistribution, FIDASIMGuidingCenterFunction, FIDASIMGuidingCenterParticles, FIDASIMFullOrbitParticles
 export read_fidasim_distribution, write_fidasim_distribution
 export split_particles, fbm2mc
-export FIDASIMBeamGeometry, FIDASIMSpectraGeometry, FIDASIMNPAGeometry
+export FIDASIMBeamGeometry, FIDASIMSpectraGeometry, FIDASIMNPAGeometry, write_fidasim_geometry
 export merge_spectra_geometry
 
 include("covariance.jl")
