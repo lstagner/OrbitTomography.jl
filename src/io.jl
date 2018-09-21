@@ -2,6 +2,7 @@ struct FIDASIMSpectra{T<:Real}
     nchan::Int
     nlambda::Int
     lambda::Vector{T}
+    brems::Union{Zeros{T,2},Matrix{T}}
     full::Union{Zeros{T,2},Matrix{T}}
     half::Union{Zeros{T,2},Matrix{T}}
     third::Union{Zeros{T,2},Matrix{T}}
@@ -21,6 +22,7 @@ function FIDASIMSpectra(fname::String)
     nlam = length(lambda)
     vars = names(f)
 
+    brems = "brems" in vars ? read(f["brems"]) : Zeros(nlam,nchan)
     full = "full" in vars ? read(f["full"]) : Zeros(nlam,nchan)
     half = "half" in vars ? read(f["half"]) : Zeros(nlam,nchan)
     third = "third" in vars ? read(f["third"]) : Zeros(nlam,nchan)
@@ -44,7 +46,7 @@ function FIDASIMSpectra(fname::String)
         pfida = Zeros(size(fida))
     end
 
-    return FIDASIMSpectra(Int(nchan),Int(nlam),lambda,full,half,third,dcx,halo,cold,fida,pfida)
+    return FIDASIMSpectra(Int(nchan),Int(nlam),lambda,brems,full,half,third,dcx,halo,cold,fida,pfida)
 end
 
 function Base.show(io::IO, s::FIDASIMSpectra)
@@ -60,7 +62,7 @@ function split_spectra(s::FIDASIMSpectra)
 
     ss = Array{typeof(s)}(undef,nclass)
     for i=1:nclass
-        sss = FIDASIMSpectra(nchan, nlambda, s.lambda, s.full, s.half, s.third,
+        sss = FIDASIMSpectra(nchan, nlambda, s.lambda, s.brems, s.full, s.half, s.third,
                              s.dcx, s.halo, s.cold, s.fida[:,:,i], s.pfida[:,:,i])
         ss[i] = sss
     end
@@ -85,6 +87,7 @@ function merge_spectra(s::FIDASIMSpectra...)
     lambda = s[1].lambda
     nlambda = s[1].nlambda
 
+    brems = hcat((ss.brems for ss in s)...)
     full = hcat((ss.full for ss in s)...)
     half = hcat((ss.half for ss in s)...)
     third = hcat((ss.third for ss in s)...)
@@ -94,7 +97,7 @@ function merge_spectra(s::FIDASIMSpectra...)
     fida = hcat((ss.fida for ss in s)...)
     pfida = hcat((ss.pfida for ss in s)...)
 
-    return FIDASIMSpectra(nchan, nlambda, lambda, full, half, third, dcx, halo, cold, fida, pfida)
+    return FIDASIMSpectra(nchan, nlambda, lambda, brems, full, half, third, dcx, halo, cold, fida, pfida)
 end
 
 function TheoreticalSpectra(S::FIDASIMSpectra, stype::Symbol, ichan::Int, iclass::Int=1)
@@ -111,6 +114,7 @@ function apply_instrumental!(s::FIDASIMSpectra,instr::Vector,dL::Vector)
     for i=1:s.nchan
         k = kernel(s.lambda,instr[i],dL[i])
         length(eachindex(k)) == 0 && continue
+        !(typeof(s.brems) <: Zeros)  && (s.brems[:,i]  .= imfilter(s.brems[:,i], k))
         !(typeof(s.full) <: Zeros)  && (s.full[:,i]  .= imfilter(s.full[:,i], k))
         !(typeof(s.half) <: Zeros)  && (s.half[:,i]  .= imfilter(s.half[:,i], k))
         !(typeof(s.third) <: Zeros) && (s.third[:,i] .= imfilter(s.third[:,i], k))
