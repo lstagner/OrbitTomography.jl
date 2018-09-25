@@ -176,6 +176,37 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
 
 end
 
+function write_orbit_grid(grid::OrbitGrid;filename="orbit_grid.h5")
+    h5open(filename,"w") do file
+        file["energy"] = collect(grid.energy)
+        file["pitch"] = collect(grid.pitch)
+        file["r"] = collect(grid.r)
+        file["counts"] = grid.counts
+        file["orbit_index"] = grid.orbit_index
+        file["class"] = String.(grid.class)
+        file["tau_p"] = grid.tau_p
+        file["tau_t"] = grid.tau_p
+    end
+    nothing
+end
+
+function read_orbit_grid(filename)
+    isfile(filename) || error("File does not exist")
+
+    f = h5open(filename)
+    energy = read(f["energy"])
+    pitch = read(f["pitch"])
+    r = read(f["r"])
+    counts = read(f["counts"])
+    orbit_index = read(f["orbit_index"])
+    class = Symbol.(read(f["class"]))
+    tau_p = read(f["tau_p"])
+    tau_t = read(f["tau_t"])
+    close(f)
+
+    return OrbitGrid(energy,pitch,r,counts,orbit_index,class,tau_p,tau_t)
+end
+
 function Base.map(grid::OrbitGrid, f::Vector)
     if length(grid.counts) != length(f)
         throw(ArgumentError("Incompatible sizes"))

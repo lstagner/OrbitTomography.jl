@@ -37,6 +37,7 @@ export RepeatedBlockDiagonal, ep_cov, eprz_cov
 
 include("orbits.jl")
 export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
+export write_orbit_grid, read_orbit_grid
 
 include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight
