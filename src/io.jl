@@ -414,7 +414,7 @@ function sample_f(f::Array{T,N}, w, x, y, z; n=100) where {T,N}
     dy = abs(y[2]-y[1])
     dz = abs(z[2]-z[1])
 
-    r = rand(N,n) - 0.5
+    r = rand(N,n) .- 0.5
     xx = zeros(n)
     yy = zeros(n)
     zz = zeros(n)
