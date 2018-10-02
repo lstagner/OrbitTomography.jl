@@ -211,7 +211,30 @@ function Base.map(grid::OrbitGrid, f::Vector)
     if length(grid.counts) != length(f)
         throw(ArgumentError("Incompatible sizes"))
     end
-    return [i == 0 ? zero(f[1]) : f[i]/grid.counts[i] for i in grid.index]
+    return [i == 0 ? zero(f[1]) : f[i]/grid.counts[i] for i in grid.orbit_index]
+end
+
+function Base.bin(grid::OrbitGrid, orbits; weights::Union{Nothing,Vector})
+
+    if weights != nothing
+        length(weights) == length(orbits) || error("Incompatible weight vector size")
+        w = weights
+    else
+        w = fill(1.0,length(orbits))
+    end
+
+    f = zeros(length(grid.counts))
+    for (io,o) in enumerate(orbits)
+        i = argmin(abs.(o.energy .- grid.energy))
+        j = argmin(abs.(o.pitch .- grid.pitch))
+        k = argmin(abs.(o.r .- grid.r))
+        ind = grid.orbit_index[i,j,k]
+        if ind != 0
+            f[ind] += w[io]
+        end
+    end
+
+    return f
 end
 
 function combine_orbits(orbits)

@@ -62,8 +62,20 @@ function split_spectra(s::FIDASIMSpectra)
 
     ss = Array{typeof(s)}(undef,nclass)
     for i=1:nclass
+        if typeof(s.fida) <: Zeros
+            dims = size(s.fida)
+            fida = Zeros(dims[1],dims[2])
+        else
+            fida = s.fida[:,:,i]
+        end
+        if typeof(s.pfida) <: Zeros
+            dims = size(s.pfida)
+            pfida = Zeros(dims[1],dims[2])
+        else
+            pfida = s.pfida[:,:,i]
+        end
         sss = FIDASIMSpectra(nchan, nlambda, s.lambda, s.brems, s.full, s.half, s.third,
-                             s.dcx, s.halo, s.cold, s.fida[:,:,i], s.pfida[:,:,i])
+                             s.dcx, s.halo, s.cold, fida, pfida)
         ss[i] = sss
     end
 
@@ -75,6 +87,13 @@ function Base.hcat(x::Zeros{T,2}...) where T <: Real
     n = sum(xx.size[2] for xx in x)
 
     return Zeros(x[1].size[1],n)
+end
+
+function Base.hcat(x::Zeros{T,3}...) where T <: Real
+    all(xx -> xx.size[1] == x[1].size[1], x) || throw(ArgumentError("mismatch in dimension 1"))
+    n = sum(xx.size[2] for xx in x)
+
+    return Zeros(x[1].size[1],n,x[1].size[3])
 end
 
 function merge_spectra(s::FIDASIMSpectra...)
@@ -150,6 +169,7 @@ struct FIDASIMGuidingCenterFunction <: AbstractDistribution
     pitch::Vector{Float64}
     denf::Matrix{Float64}
     f::Array{Float64,4}
+    nfast::Float64
 end
 
 function FIDASIMGuidingCenterFunction(f::HDF5.HDF5File)
@@ -166,7 +186,14 @@ function FIDASIMGuidingCenterFunction(f::HDF5.HDF5File)
     denf = read(f["denf"])
     dist = read(f["f"])
 
-    return FIDASIMGuidingCenterFunction(nr,nz,nenergy,npitch,r,z,energy,pitch,denf,dist)
+    fr = dist .* reshape(r,(1,1,length(r),1))
+    dE = abs(energy[2] - energy[1])
+    dp = abs(pitch[2] - pitch[1])
+    dr = abs(r[2] - r[1])
+    dz = abs(z[2] - z[1])
+    nfast = sum(fr)*(2*pi*dE*dp*dr*dz)
+
+    return FIDASIMGuidingCenterFunction(nr,nz,nenergy,npitch,r,z,energy,pitch,denf,dist,nfast)
 end
 
 function Base.show(io::IO, s::FIDASIMGuidingCenterFunction)
@@ -182,6 +209,7 @@ struct FIDASIMGuidingCenterParticles <: AbstractDistribution
     z::Vector{Float64}
     energy::Vector{Float64}
     pitch::Vector{Float64}
+    nfast::Float64
 end
 
 function FIDASIMGuidingCenterParticles(f::HDF5.HDF5File)
@@ -196,11 +224,12 @@ function FIDASIMGuidingCenterParticles(f::HDF5.HDF5File)
     r = read(f["r"])
     z = read(f["z"])
 
-    return FIDASIMGuidingCenterParticles(npart,nclass,class,weight,r,z,energy,pitch)
+    return FIDASIMGuidingCenterParticles(npart,nclass,class,weight,r,z,energy,pitch,sum(weight))
 end
 
 function Base.show(io::IO, s::FIDASIMGuidingCenterParticles)
     println(io, "FIDASIMGuidingCenterParticles")
+    println(io, "  nfast = $(s.nfast)")
     println(io, "  nparticles = $(s.npart)")
 end
 
@@ -214,6 +243,7 @@ struct FIDASIMFullOrbitParticles <: AbstractDistribution
     vr::Vector{Float64}
     vt::Vector{Float64}
     vz::Vector{Float64}
+    nfast::Float64
 end
 
 function FIDASIMFullOrbitParticles(f::HDF5.HDF5File)
@@ -229,11 +259,12 @@ function FIDASIMFullOrbitParticles(f::HDF5.HDF5File)
     vt = read(f["vt"])
     vz = read(f["vz"])
 
-    return FIDASIMFullOrbitParticles(npart,nclass,class,weight,r,z,vr,vt,vz)
+    return FIDASIMFullOrbitParticles(npart,nclass,class,weight,r,z,vr,vt,vz,sum(weight))
 end
 
 function Base.show(io::IO, s::FIDASIMFullOrbitParticles)
     println(io, "FIDASIMFullOrbitParticles")
+    println(io, "  nfast = $(s.nfast)")
     println(io, "  nparticles = $(s.npart)")
 end
 
@@ -336,7 +367,7 @@ function split_particles(d::FIDASIMGuidingCenterParticles)
         npart = sum(w)
         dd = FIDASIMGuidingCenterParticles(npart,1,fill(c,npart),
                                            d.weight[w], d.r[w], d.z[w],
-                                           d.energy[w],d.pitch[w])
+                                           d.energy[w],d.pitch[w],sum(d.weight[w]))
         darr[c] = dd
     end
 
@@ -353,7 +384,7 @@ function split_particles(d::FIDASIMFullOrbitParticles)
         npart = sum(w)
         dd = FIDASIMFullOrbitParticles(npart,1,fill(1,npart),
                                        d.weight[w], d.r[w], d.z[w],
-                                       d.vr[w], d.vt[w], d.vz[w])
+                                       d.vr[w], d.vt[w], d.vz[w],sum(d.weight[w]))
         darr[c] = dd
     end
 
@@ -366,10 +397,11 @@ function sample_array(x::Array{T,N},ns) where {T,N}
     dims = size(x)
     x_cum = cumsum(vec(x))
     inds = zeros(Int,N,ns)
+    subs = CartesianIndices(dims)
     @inbounds for i=1:ns
         p = rand()*w_tot
         j = searchsortedfirst(x_cum,p,Base.Order.Forward)
-        inds[:,i] = collect(ind2sub(dims,j))
+        inds[:,i] = collect(Tuple(subs[j]))
     end
     return inds
 end
@@ -400,18 +432,13 @@ end
 
 function fbm2mc(d::FIDASIMGuidingCenterFunction; n=1_000_000)
     fr = d.f .* reshape(d.r,(1,1,length(d.r),1))
-    dE = abs(d.energy[2] - d.energy[1])
-    dp = abs(d.pitch[2] - d.pitch[1])
-    dr = abs(d.r[2] - d.r[1])
-    dz = abs(d.z[2] - d.z[1])
-    ntot = sum(fr)*(2*pi*dE*dp*dr*dz)
 
     energy, pitch, r, z = sample_f(fr,d.energy,d.pitch,d.r,d.z,n=n)
-    weight = fill(ntot/n,n)
+    weight = fill(d.nfast/n,n)
     nclass = 1
     class = fill(1,n)
 
-    return FIDASIMGuidingCenterParticles(n,nclass,class,weight,r,z,energy,pitch)
+    return FIDASIMGuidingCenterParticles(n,nclass,class,weight,r,z,energy,pitch,d.nfast)
 end
 
 struct FIDASIMBeamGeometry
