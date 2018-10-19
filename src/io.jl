@@ -83,17 +83,17 @@ function split_spectra(s::FIDASIMSpectra)
 end
 
 function Base.hcat(x::Zeros{T,2}...) where T <: Real
-    all(xx -> xx.size[1] == x[1].size[1], x) || throw(ArgumentError("mismatch in dimension 1"))
-    n = sum(xx.size[2] for xx in x)
+    all(xx -> size(xx)[1] == size(x[1])[1], x) || throw(ArgumentError("mismatch in dimension 1"))
+    n = sum(size(xx)[2] for xx in x)
 
-    return Zeros(x[1].size[1],n)
+    return Zeros(size(x[1])[1],n)
 end
 
 function Base.hcat(x::Zeros{T,3}...) where T <: Real
-    all(xx -> xx.size[1] == x[1].size[1], x) || throw(ArgumentError("mismatch in dimension 1"))
-    n = sum(xx.size[2] for xx in x)
+    all(xx -> size(xx)[1] == size(x[1])[1], x) || throw(ArgumentError("mismatch in dimension 1"))
+    n = sum(size(xx)[2] for xx in x)
 
-    return Zeros(x[1].size[1],n,x[1].size[3])
+    return Zeros(size(x[1])[1],n,size(x[1])[3])
 end
 
 function merge_spectra(s::FIDASIMSpectra...)
