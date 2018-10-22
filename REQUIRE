@@ -1,4 +1,4 @@
-julia 0.6
+julia 0.7
 EFIT
 Equilibrium
 GuidingCenterOrbits
@@ -8,3 +8,4 @@ Clustering
 StatsBase
 FillArrays
 IterTools
+ProgressMeter

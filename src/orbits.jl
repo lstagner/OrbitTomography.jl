@@ -13,8 +13,8 @@ function Base.show(io::IO, og::OrbitGrid)
     print(io, "OrbitGrid: $(length(og.energy))×$(length(og.pitch))×$(length(og.r)):$(length(og.counts))")
 end
 
-function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
-                    nstep=12000, tmax=1200.0, dl=0.0, store_path=false)
+function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
+                    kwargs...)
 
     nenergy = length(eo)
     npitch = length(po)
@@ -31,20 +31,13 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
         ie,ip,ir = Tuple(subs[i])
         c = EPRCoordinate(M,eo[ie],po[ip],ro[ir])
         try
-            o = get_orbit(M, c, nstep=nstep, tmax=tmax)
+            o = get_orbit(M, c, kwargs...)
         catch
             o = Orbit(EPRCoordinate(),:incomplete)
         end
 
-        if o.class == :incomplete || o.class == :degenerate || hits_wall(o,wall)
+        if o.class in (:incomplete,:degenerate,:lost)
             o = Orbit(o.coordinate,:incomplete)
-        elseif store_path
-            if dl > 0.0
-                rpath = down_sample(o.path,mean_dl=dl)
-                o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,rpath)
-            end
-        else
-            o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,OrbitPath(typeof(o.tau_p)))
         end
         o
     end
@@ -64,7 +57,7 @@ function orbit_grid(M::AxisymmetricEquilibrium, wall, eo::AbstractVector, po::Ab
 end
 
 function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, orbits::Vector;
-                        norbits=1000, dl=0.0, nstep = 12000, tmax=1200.0, combine=(length(orbits[1].path) != 0))
+                        norbits=1000, combine=(length(orbits[1].path) != 0), kwargs...)
 
     eo = orbit_grid.energy
     po = orbit_grid.pitch
@@ -114,11 +107,7 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
                 c = coords .* norm .+ mins
                 cc = EPRCoordinate(M,mean(c,dims=2)...)
                 try
-                    o = get_orbit(M, cc.energy,cc.pitch,cc.r,cc.z, nstep=nstep,tmax=tmax)
-                    if dl > 0.0
-                        rpath = down_sample(o.path,mean_dl=dl)
-                        o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,rpath)
-                    end
+                    o = get_orbit(M, GCParticle(cc.energy,cc.pitch,cc.r,cc.z,cc.m,cc.q),kwargs...)
                     push!(orbs,o)
                     orbit_num = orbit_num + 1
                 catch
@@ -144,11 +133,7 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
                 sum(w) == 0 && continue
                 cc = EPRCoordinate(M,coords[1,i],coords[2,i],coords[3,i])
                 try
-                    o = get_orbit(M, cc.energy, cc.pitch, cc.r, cc.z, nstep=nstep,tmax=tmax)
-                    if dl > 0.0
-                        rpath = down_sample(o.path,mean_dl=dl)
-                        o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,rpath)
-                    end
+                    o = get_orbit(M, GCParticle(cc.energy,cc.pitch,cc.r,cc.z,cc.m,cc.q),kwargs...)
                     push!(orbs,o)
                     orbit_num = orbit_num + 1
                 catch
@@ -307,3 +292,23 @@ function fbm2orbit(M::AxisymmetricEquilibrium,d::FIDASIMGuidingCenterFunction; n
     return mc2orbit(M,dmc)
 end
 
+struct LocalDistribution{T<:AbstractMatrix,S<:AbstractVector}
+    d::T
+    energy::S
+    pitch::S
+end
+
+function local_distribution(M, grid, f::Vector, r, z; energy=1:80, pitch=-1.0:0.02:1.0,kwargs...)
+    f3d = map(grid,f)
+    nenergy = length(energy)
+    npitch = length(pitch)
+    d = zeros(length(energy),length(pitch))
+    @showprogress "Calculating Local Distribution..." for i=1:nenergy, j=1:npitch
+        v, detJ = eprz_to_eprt(M, energy[i], pitch[j], r, z, kwargs...)
+        ii = argmin(abs.(v[1] .- grid.energy))
+        jj = argmin(abs.(v[2] .- grid.pitch))
+        kk = argmin(abs.(v[3] .- grid.r))
+        d[i,j] = detJ*f3d[ii,jj,kk]
+    end
+    return LocalDistribution(d,energy,pitch)
+end
