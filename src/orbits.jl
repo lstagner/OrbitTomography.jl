@@ -298,7 +298,8 @@ struct LocalDistribution{T<:AbstractMatrix,S<:AbstractVector}
     pitch::S
 end
 
-function local_distribution(M, grid, f::Vector, r, z; energy=1:80, pitch=-1.0:0.02:1.0,kwargs...)
+function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vector, r, z;
+                            energy=1:80, pitch=-1.0:0.02:1.0, kwargs...)
     f3d = map(grid,f)
     nenergy = length(energy)
     npitch = length(pitch)
