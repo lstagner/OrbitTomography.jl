@@ -247,7 +247,7 @@ function combine_orbits(orbits)
     pitch = o.path.pitch
     energy = o.path.energy
     dt = o.path.dt
-    dl = o.path.dl
+    #dl = o.path.dl
 
     c = o.coordinate
     isa(c, EPRCoordinate) || error("Wrong orbit coordinate. Expected EPRCoordinate")
@@ -272,7 +272,7 @@ function combine_orbits(orbits)
         append!(pitch, oo.path.pitch)
         append!(energy, oo.path.energy)
         append!(dt, oo.path.dt)
-        append!(dl, oo.path.dl)
+        #append!(dl, oo.path.dl)
     end
     ec = ec/norbits
     pc = pc/norbits
@@ -282,7 +282,7 @@ function combine_orbits(orbits)
     tau_t = tau_p/norbits
 
     cc = EPRCoordinate(ec,pc,rc,zc,c.amu,c.q)
-    path = OrbitPath(r,z,phi,pitch,energy,dt,dl)
+    path = OrbitPath(r,z,phi,pitch,energy,dt)#,dl)
 
     if all(x -> x.class == orbits[1].class, orbits)
         class = orbits[1].class
