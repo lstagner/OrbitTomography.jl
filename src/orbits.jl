@@ -31,7 +31,7 @@ function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::Abstract
         ie,ip,ir = Tuple(subs[i])
         c = EPRCoordinate(M,eo[ie],po[ip],ro[ir])
         try
-            o = get_orbit(M, c, kwargs...)
+            o = get_orbit(M, c; kwargs...)
         catch
             o = Orbit(EPRCoordinate(),:incomplete)
         end
@@ -107,7 +107,7 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
                 c = coords .* norm .+ mins
                 cc = EPRCoordinate(M,mean(c,dims=2)...)
                 try
-                    o = get_orbit(M, GCParticle(cc.energy,cc.pitch,cc.r,cc.z,cc.m,cc.q),kwargs...)
+                    o = get_orbit(M, GCParticle(cc.energy,cc.pitch,cc.r,cc.z,cc.m,cc.q); kwargs...)
                     push!(orbs,o)
                     orbit_num = orbit_num + 1
                 catch
@@ -133,7 +133,7 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
                 sum(w) == 0 && continue
                 cc = EPRCoordinate(M,coords[1,i],coords[2,i],coords[3,i])
                 try
-                    o = get_orbit(M, GCParticle(cc.energy,cc.pitch,cc.r,cc.z,cc.m,cc.q),kwargs...)
+                    o = get_orbit(M, GCParticle(cc.energy,cc.pitch,cc.r,cc.z,cc.m,cc.q); kwargs...)
                     push!(orbs,o)
                     orbit_num = orbit_num + 1
                 catch
@@ -281,7 +281,7 @@ end
 
 function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles; kwargs...)
     orbits = @distributed (vcat) for i=1:d.npart
-        o = get_orbit(M,GCParticle(d.energy[i],M.sigma*d.pitch[i],d.r[i]/100,d.z[i]/100),store_path=false,kwargs...)
+        o = get_orbit(M,GCParticle(d.energy[i],M.sigma*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
         o.coordinate
     end
     return orbits
@@ -305,7 +305,7 @@ function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vect
     npitch = length(pitch)
     d = zeros(length(energy),length(pitch))
     @showprogress "Calculating Local Distribution..." for i=1:nenergy, j=1:npitch
-        v, detJ = eprz_to_eprt(M, energy[i], pitch[j], r, z, kwargs...)
+        v, detJ = eprz_to_eprt(M, energy[i], pitch[j], r, z; kwargs...)
         ii = argmin(abs.(v[1] .- grid.energy))
         jj = argmin(abs.(v[2] .- grid.pitch))
         kk = argmin(abs.(v[3] .- grid.r))
