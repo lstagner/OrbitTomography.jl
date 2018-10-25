@@ -210,7 +210,8 @@ function Base.map(grid::OrbitGrid, f::Vector)
     if length(grid.counts) != length(f)
         throw(ArgumentError("Incompatible sizes"))
     end
-    return [i == 0 ? zero(f[1]) : f[i]/grid.counts[i] for i in grid.orbit_index]
+    dorb = abs((grid.r[2]-grid.r[1])*(grid.energy[2]-grid.energy[1])*(grid.pitch[2]-grid.pitch[1]))
+    return [i == 0 ? zero(f[1]) : f[i]/(grid.counts[i]*dorb) for i in grid.orbit_index]
 end
 
 function Base.bin(grid::OrbitGrid, orbits; weights::Union{Nothing,Vector})
@@ -294,11 +295,25 @@ function combine_orbits(orbits)
 end
 
 function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles; kwargs...)
-    orbits = @distributed (vcat) for i=1:d.npart
-        o = get_orbit(M,GCParticle(d.energy[i],M.sigma*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
-        o.coordinate
+    p = Progress(d.npart)
+    channel = RemoteChannel(()->Channel{Bool}(d.npart),1)
+
+    t = @sync begin
+        @async while take!(channel)
+            next!(p)
+        end
+
+        @async begin
+            orbs = @distributed (vcat) for i=1:d.npart
+                o = get_orbit(M,GCParticle(d.energy[i],M.sigma*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
+                put!(channel,true)
+                o.coordinate
+            end
+            put!(channel,false)
+            orbs
+        end
     end
-    return orbits
+    return fetch(t)
 end
 
 function fbm2orbit(M::AxisymmetricEquilibrium,d::FIDASIMGuidingCenterFunction; n=1_000_000, kwargs...)
