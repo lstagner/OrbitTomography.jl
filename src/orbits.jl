@@ -27,20 +27,34 @@ function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::Abstract
 
     norbs = nenergy*npitch*nr
     subs = CartesianIndices((nenergy,npitch,nr))
-    orbs = @distributed (vcat) for i=1:norbs
-        ie,ip,ir = Tuple(subs[i])
-        c = EPRCoordinate(M,eo[ie],po[ip],ro[ir])
-        try
-            o = get_orbit(M, c; kwargs...)
-        catch
-            o = Orbit(EPRCoordinate(),:incomplete)
-        end
 
-        if o.class in (:incomplete,:degenerate,:lost)
-            o = Orbit(o.coordinate,:incomplete)
+    p = Progress(norbs)
+    channel = RemoteChannel(()->Channel{Bool}(norbs), 1)
+    orbs = fetch(@sync begin
+        @async while take!(channel)
+            next!(p)
         end
-        o
-    end
+        @async begin
+            orbs = @distributed (vcat) for i=1:norbs
+                ie,ip,ir = Tuple(subs[i])
+                c = EPRCoordinate(M,eo[ie],po[ip],ro[ir])
+                try
+                    o = get_orbit(M, c; kwargs...)
+                catch
+                    o = Orbit(EPRCoordinate(),:incomplete)
+                end
+
+                if o.class in (:incomplete,:degenerate,:lost)
+                    o = Orbit(o.coordinate,:incomplete)
+                end
+                put!(channel, true)
+                o
+            end
+            put!(channel, false)
+            orbs
+        end
+    end)
+
     for i=1:norbs
         class[subs[i]] = orbs[i].class
         tau_p[subs[i]] = orbs[i].tau_p
