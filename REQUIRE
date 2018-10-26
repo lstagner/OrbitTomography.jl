@@ -9,3 +9,4 @@ StatsBase
 FillArrays
 IterTools
 ProgressMeter
+NearestNeighbors

@@ -214,7 +214,7 @@ function Base.map(grid::OrbitGrid, f::Vector)
     return [i == 0 ? zero(f[1]) : f[i]/(grid.counts[i]*dorb) for i in grid.orbit_index]
 end
 
-function Base.bin(grid::OrbitGrid, orbits; weights::Union{Nothing,Vector})
+function Base.bin(grid::OrbitGrid, orbits; weights::Union{Nothing,Vector},nearest=false)
 
     if weights != nothing
         length(weights) == length(orbits) || error("Incompatible weight vector size")
@@ -224,13 +224,23 @@ function Base.bin(grid::OrbitGrid, orbits; weights::Union{Nothing,Vector})
     end
 
     f = zeros(length(grid.counts))
-    for (io,o) in enumerate(orbits)
-        i = argmin(abs.(o.energy .- grid.energy))
-        j = argmin(abs.(o.pitch .- grid.pitch))
-        k = argmin(abs.(o.r .- grid.r))
-        ind = grid.orbit_index[i,j,k]
-        if ind != 0
-            f[ind] += w[io]
+    if !nearest
+        for (io,o) in enumerate(orbits)
+            i = argmin(abs.(o.energy .- grid.energy))
+            j = argmin(abs.(o.pitch .- grid.pitch))
+            k = argmin(abs.(o.r .- grid.r))
+            ind = grid.orbit_index[i,j,k]
+            if ind != 0
+                f[ind] += w[io]
+            end
+        end
+    else
+        inds = filter(x->grid.orbit_index[x] != 0, CartesianIndices(grid.orbit_index))
+        data = hcat( ([grid.energy[I[1]], grid.pitch[I[2]], grid.r[I[3]]] for I in inds)...)
+        tree = KDTree(data)
+        for (io, o) in enumerate(orbits)
+            idxs, dists = knn(tree,[o.energy,o.pitch,o.r],1,false)
+            f[grid.orbit_index[inds[idxs[1]]]] += w[io]
         end
     end
 
@@ -328,16 +338,27 @@ struct LocalDistribution{T<:AbstractMatrix,S<:AbstractVector}
 end
 
 function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vector, r, z;
-                            energy=1:80, pitch=-1.0:0.02:1.0, kwargs...)
+                            energy=1:80, pitch=-1.0:0.02:1.0, nearest=false,kwargs...)
     f3d = map(grid,f)
     nenergy = length(energy)
     npitch = length(pitch)
+    if nearest
+        inds = filter(x->grid.orbit_index[x] != 0, CartesianIndices(grid.orbit_index))
+        data = hcat(([grid.energy[I[1]], grid.pitch[I[2]], grid.r[I[3]]] for I in inds)...)
+        tree = KDTree(data)
+    end
+
     d = zeros(length(energy),length(pitch))
     @showprogress "Calculating Local Distribution..." for i=1:nenergy, j=1:npitch
         v, detJ = eprz_to_eprt(M, energy[i], pitch[j], r, z; kwargs...)
-        ii = argmin(abs.(v[1] .- grid.energy))
-        jj = argmin(abs.(v[2] .- grid.pitch))
-        kk = argmin(abs.(v[3] .- grid.r))
+        if nearest
+            idxs, dists = knn(tree,v[1:3],1,false)
+            ii,jj,kk = Tuple(inds[idxs[1]])
+        else
+            ii = argmin(abs.(v[1] .- grid.energy))
+            jj = argmin(abs.(v[2] .- grid.pitch))
+            kk = argmin(abs.(v[3] .- grid.r))
+        end
         d[i,j] = detJ*f3d[ii,jj,kk]
     end
     return LocalDistribution(d,energy,pitch)
