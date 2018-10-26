@@ -1,4 +1,4 @@
-#__precompile__()
+__precompile__()
 
 module OrbitTomography
 
@@ -18,6 +18,7 @@ using Images
 using StatsBase
 using FillArrays
 using ProgressMeter
+using NearestNeighbors
 import IterTools: nth
 
 include("spectra.jl")
