@@ -175,7 +175,7 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
 
 end
 
-function orbit_matrix(M::AxisymmetricEquilibrium, grid::OrbitGrid, energy, pitch, r, z)
+function orbit_matrix(M::AxisymmetricEquilibrium, grid::OrbitGrid, energy, pitch, r, z; kwargs...)
     nenergy = length(energy)
     npitch = length(pitch)
     nr = length(r)
@@ -194,7 +194,7 @@ function orbit_matrix(M::AxisymmetricEquilibrium, grid::OrbitGrid, energy, pitch
             R = @distributed (hcat) for i=1:nsubs
                 ie,ip,ir,iz = Tuple(subs[i])
                 gcp = GCParticle(energy[ie],pitch[ip],r[ir],z[iz])
-                o = get_orbit(M,gcp,store_path=false,classify_orbit=false,wall=limiter,tmax=10000)
+                o = get_orbit(M,gcp;store_path=false,kwargs...)
                 Rcol = spzeros(norbits)
                 if !(o.class in (:lost,:incomplete)) && o.coordinate.r > M.axis[1]
                     oi = orbit_index(grid,o.coordinate)
