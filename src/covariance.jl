@@ -137,7 +137,7 @@ function eprz_cov(energy, pitch, r, z, p::Vector)
     nr = length(r)
     nz = length(z)
     if p == 2
-        Σ_ep = ep_covariance(energy, pitch, p[2], p[3])
+        Σ_ep = ep_covariance(energy, pitch, p[1], p[2])
     elseif p == 3
         Σ_ep = (p[1]^2)*ep_covariance(energy, pitch, p[2], p[3])
     else

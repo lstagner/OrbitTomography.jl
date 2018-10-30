@@ -19,6 +19,7 @@ using StatsBase
 using FillArrays
 using ProgressMeter
 using NearestNeighbors
+using SparseArrays
 import IterTools: nth
 
 include("spectra.jl")
@@ -40,6 +41,7 @@ export RepeatedBlockDiagonal, ep_cov, eprz_cov
 include("orbits.jl")
 export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
 export write_orbit_grid, read_orbit_grid, LocalDistribution, local_distribution
+export orbit_index, orbit_matrix
 
 include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight

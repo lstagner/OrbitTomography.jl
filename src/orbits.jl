@@ -175,6 +175,41 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
 
 end
 
+function orbit_matrix(M::AxisymmetricEquilibrium, grid::OrbitGrid, energy, pitch, r, z)
+    nenergy = length(energy)
+    npitch = length(pitch)
+    nr = length(r)
+    nz = length(z)
+    norbits = length(grid.counts)
+    subs = CartesianIndices((nenergy,npitch,nr,nz))
+    nsubs = length(subs)
+
+    p = Progress(nsubs)
+    channel = RemoteChannel(()->Channel{Bool}(nsubs), 1)
+    R = fetch(@sync begin
+        @async while take!(channel)
+            next!(p)
+        end
+        @async begin
+            R = @distributed (hcat) for i=1:nsubs
+                ie,ip,ir,iz = Tuple(subs[i])
+                gcp = GCParticle(energy[ie],pitch[ip],r[ir],z[iz])
+                o = get_orbit(M,gcp,store_path=false,classify_orbit=false,wall=limiter,tmax=10000)
+                Rcol = spzeros(norbits)
+                if !(o.class in (:lost,:incomplete)) && o.coordinate.r > M.axis[1]
+                    oi = orbit_index(grid,o.coordinate)
+                    (oi > 0) && (Rcol[oi] = 1.0)
+                end
+                put!(channel,true)
+                Rcol
+            end
+            put!(channel,false)
+            R
+        end
+    end)
+    return R
+end
+
 function write_orbit_grid(grid::OrbitGrid;filename="orbit_grid.h5")
     h5open(filename,"w") do file
         file["energy"] = collect(grid.energy)
@@ -212,6 +247,31 @@ function Base.map(grid::OrbitGrid, f::Vector)
     end
     dorb = abs((grid.r[2]-grid.r[1])*(grid.energy[2]-grid.energy[1])*(grid.pitch[2]-grid.pitch[1]))
     return [i == 0 ? zero(f[1]) : f[i]/(grid.counts[i]*dorb) for i in grid.orbit_index]
+end
+
+function orbit_index(grid::OrbitGrid, o::EPRCoordinate; nearest=false)
+
+    if !nearest
+        if (grid.energy[1] <= o.energy <= grid.energy[end]) &&
+           (grid.pitch[1] <= o.pitch <= grid.pitch[end]) &&
+           (grid.r[1] <= o.r <= grid.r[end])
+
+            i = argmin(abs.(o.energy .- grid.energy))
+            j = argmin(abs.(o.pitch .- grid.pitch))
+            k = argmin(abs.(o.r .- grid.r))
+            ind = grid.orbit_index[i,j,k]
+        else
+            ind = 0
+        end
+    else
+        inds = filter(x->grid.orbit_index[x] != 0, CartesianIndices(grid.orbit_index))
+        data = hcat( ([grid.energy[I[1]], grid.pitch[I[2]], grid.r[I[3]]] for I in inds)...)
+        tree = KDTree(data)
+        idxs, dists = knn(tree,[o.energy,o.pitch,o.r],1,false)
+        ind = grid.orbit_index[inds[idxs[1]]]
+    end
+
+    return ind
 end
 
 function Base.bin(grid::OrbitGrid, orbits; weights::Union{Nothing,Vector},nearest=false)
