@@ -68,33 +68,41 @@ Base.:(*)(a::T, A::RepeatedBlockDiagonal) where {T<:Number} = RepeatedBlockDiago
 Base.:(/)(A::RepeatedBlockDiagonal,a::T) where {T<:Number} = RepeatedBlockDiagonal(A.data/a,A.n)
 
 function Base.:(*)(A::RepeatedBlockDiagonal , a::Union{SparseVector{S,T},SparseMatrixCSC{S,T}}) where {S,T}
-    iden = spzeros(S,A.n,A.n)
-    iden[1,1] = one(S)
-    B = kron(iden,A.data)*a
-    iden[1,1] = zero(S)
-    dropzeros!(iden)
-    for i=2:A.n
-        iden[i,i] = one(S)
-        B = B .+ kron(iden,A.data)*a
-        iden[i,i] = zero(S)
-        dropzeros!(iden)
+    nr,nc = size(A.data)
+    colptr = vcat(1:nr:(nr*nc),fill(nr*nc+1,nr*A.n + 1 - nc))
+    colptr2 = Array{Int}(undef,length(colptr))
+    rowval = repeat(1:nr,nc)
+    rowval2 = Array{Int}(undef,length(rowval))
+    K = SparseMatrixCSC(size(A)..., colptr, rowval, vec(A.data))
+    B = K*a
+    @showprogress for i=2:A.n
+        circshift!(colptr2,colptr,(i-1)*nc)
+        rowval2 .= rowval .+ (i-1)*nr
+        K = SparseMatrixCSC(K.m,K.n,colptr2,rowval2, K.nzval)
+        B = B .+ K*a
     end
     return B
 end
 
 function Base.:(*)(a::Union{SparseVector{S,T},SparseMatrixCSC{S,T}}, A::RepeatedBlockDiagonal) where {S,T}
-    iden = spzeros(S,A.n,A.n)
-    iden[1,1] = one(S)
-    B = a*kron(iden,A.data)
-    iden[1,1] = zero(S)
-    dropzeros!(iden)
-    for i=2:A.n
-        iden[i,i] = one(S)
-        B = B .+ a*kron(iden,A.data)
-        iden[i,i] = zero(S)
-        dropzeros!(iden)
+    nr,nc = size(A.data)
+    colptr = vcat(1:nr:(nr*nc),fill(nr*nc+1,nr*A.n + 1 - nc))
+    colptr2 = Array{Int}(undef,length(colptr))
+    rowval = repeat(1:nr,nc)
+    rowval2 = Array{Int}(undef,length(rowval))
+    K = SparseMatrixCSC(size(A)..., colptr, rowval, vec(A.data))
+    B = a*K
+    @showprogress for i=2:A.n
+        circshift!(colptr2,colptr,(i-1)*nc)
+        rowval2 .= rowval .+ (i-1)*nr
+        K = SparseMatrixCSC(K.m,K.n,colptr2,rowval2, K.nzval)
+        B = B .+ a*K
     end
     return B
+end
+
+function LinearAlgebra.inv(A::RepeatedBlockDiagonal)
+    RepeatedBlockDiagonal(inv(A.data),A.n)
 end
 
 function ep_cov(energy, pitch, sigE, sigp)
@@ -124,10 +132,10 @@ function ep_cov(energy, pitch, sigE, sigp)
 end
 
 function ep_cov(energy, pitch, p::Vector)
-    if p == 2
-        return ep_covariance(energy, pitch, p[1], p[2])
-    elseif p == 3
-        return (p[1]^2)*ep_covariance(energy, pitch, p[2], p[3])
+    if length(p) == 2
+        return ep_cov(energy, pitch, p[1], p[2])
+    elseif length(p) == 3
+        return (p[1]^2)*ep_cov(energy, pitch, p[2], p[3])
     else
         error("Unsupported number of parameters")
     end
@@ -136,10 +144,10 @@ end
 function eprz_cov(energy, pitch, r, z, p::Vector)
     nr = length(r)
     nz = length(z)
-    if p == 2
-        Σ_ep = ep_covariance(energy, pitch, p[1], p[2])
-    elseif p == 3
-        Σ_ep = (p[1]^2)*ep_covariance(energy, pitch, p[2], p[3])
+    if length(p) == 2
+        Σ_ep = ep_cov(energy, pitch, p[1], p[2])
+    elseif length(p) == 3
+        Σ_ep = (p[1]^2)*ep_cov(energy, pitch, p[2], p[3])
     else
         error("Unsupported number of parameters")
     end
