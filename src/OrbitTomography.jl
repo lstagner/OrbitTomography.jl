@@ -21,7 +21,7 @@ using ProgressMeter
 using NearestNeighbors
 using SparseArrays
 using StaticArrays
-using NonNegativeLeastSquares
+using NonNegLeastSquares
 import IterTools: nth
 
 include("spectra.jl")
