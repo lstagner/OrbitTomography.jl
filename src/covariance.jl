@@ -74,12 +74,11 @@ function Base.:(*)(A::RepeatedBlockDiagonal , a::Union{SparseVector{S,T},SparseM
     rowval = repeat(1:nr,nc)
     rowval2 = Array{Int}(undef,length(rowval))
     K = SparseMatrixCSC(size(A)..., colptr, rowval, vec(A.data))
-    B = K*a
-    @showprogress for i=2:A.n
+    B = @distributed (+) for i=1:A.n
         circshift!(colptr2,colptr,(i-1)*nc)
         rowval2 .= rowval .+ (i-1)*nr
         K = SparseMatrixCSC(K.m,K.n,colptr2,rowval2, K.nzval)
-        B = B .+ K*a
+        K*a
     end
     return B
 end
@@ -91,12 +90,11 @@ function Base.:(*)(a::Union{SparseVector{S,T},SparseMatrixCSC{S,T}}, A::Repeated
     rowval = repeat(1:nr,nc)
     rowval2 = Array{Int}(undef,length(rowval))
     K = SparseMatrixCSC(size(A)..., colptr, rowval, vec(A.data))
-    B = a*K
-    @showprogress for i=2:A.n
+    B = @distributed (+) for i=1:A.n
         circshift!(colptr2,colptr,(i-1)*nc)
         rowval2 .= rowval .+ (i-1)*nr
         K = SparseMatrixCSC(K.m,K.n,colptr2,rowval2, K.nzval)
-        B = B .+ a*K
+        a*K
     end
     return B
 end
