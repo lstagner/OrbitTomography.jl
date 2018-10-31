@@ -10,3 +10,4 @@ FillArrays
 IterTools
 ProgressMeter
 NearestNeighbors
+StaticArrays

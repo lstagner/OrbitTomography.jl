@@ -20,6 +20,7 @@ using FillArrays
 using ProgressMeter
 using NearestNeighbors
 using SparseArrays
+using StaticArrays
 import IterTools: nth
 
 include("spectra.jl")
@@ -36,7 +37,7 @@ export merge_spectra_geometry
 
 include("covariance.jl")
 export epr_cov
-export RepeatedBlockDiagonal, ep_cov, eprz_cov
+export RepeatedBlockDiagonal, ep_cov, eprz_cov,transform_eprz_cov
 
 include("orbits.jl")
 export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit

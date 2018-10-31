@@ -127,6 +127,23 @@ function Base.:(*)(a::Union{SparseVector{S,T},SparseMatrixCSC{S,T}}, A::Repeated
     return B
 end
 
+function transform_eprz_cov(C,R)
+    nr,nc = size(C.data)
+    colptr = vcat(1:nr:(nr*nc),fill(nr*nc+1,nr*C.n + 1 - nc))
+    colptr2 = Array{Int}(undef,length(colptr))
+    rowval = repeat(1:nr,nc)
+    rowval2 = Array{Int}(undef,length(rowval))
+    K = SparseMatrixCSC(size(C)..., colptr, rowval, vec(C.data))
+    S = @distributed (+) for i=1:C.n
+        circshift!(colptr2,colptr,(i-1)*nc)
+        rowval2 .= rowval .+ (i-1)*nr
+        K = SparseMatrixCSC(K.m,K.n,colptr2,rowval2, K.nzval)
+        Array((R*(R*K)'))
+    end
+
+    return S
+end
+
 function LinearAlgebra.inv(A::RepeatedBlockDiagonal)
     RepeatedBlockDiagonal(inv(A.data),A.n)
 end
@@ -138,17 +155,16 @@ function ep_cov(energy, pitch, sigE, sigp)
     nep = nenergy*npitch
 
     Σ_ep = zeros(nep,nep)
-    x = zeros(2)
-    y = zeros(2)
+    Σ_p_inv = SMatrix{2,2}(inv(Diagonal([sigE,sigp].^2)))
     subs = CartesianIndices((nenergy,npitch))
-    for i=1:nep
+    @inbounds for i=1:nep
         ie,ip = Tuple(subs[i])
-        x .= [energy[ie],pitch[ip]]
+        x = SVector{2}(energy[ie],pitch[ip])
         for j=i:nep
             je,jp = Tuple(subs[j])
-            y .= [energy[je],pitch[jp]]
-
-            l = (x .- y)'*inv(Diagonal([sigE,sigp].^2))*(x .- y)
+            y = SVector{2}(energy[je],pitch[jp])
+            d = x .- y
+            l = d'*Σ_p_inv*d
             Σ_ep[i,j] = exp(-0.5*l)
             Σ_ep[j,i] = Σ_ep[i,j]
         end
