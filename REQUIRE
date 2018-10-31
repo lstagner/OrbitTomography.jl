@@ -11,3 +11,4 @@ IterTools
 ProgressMeter
 NearestNeighbors
 StaticArrays
+NonNegativeLeastSquares

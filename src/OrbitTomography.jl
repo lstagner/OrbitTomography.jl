@@ -21,6 +21,7 @@ using ProgressMeter
 using NearestNeighbors
 using SparseArrays
 using StaticArrays
+using NonNegativeLeastSquares
 import IterTools: nth
 
 include("spectra.jl")
@@ -47,5 +48,7 @@ export orbit_index, orbit_matrix
 include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight
 
+include("tomography.jl")
+export marginal_loglike, solve
 
 end # module
