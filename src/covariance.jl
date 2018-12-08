@@ -144,6 +144,23 @@ function transform_eprz_cov(C,R)
     return S
 end
 
+function transform_eprz_cov2(C,R)
+    nr,nc = size(C.data)
+    Rnr = size(R)[1]
+    Cs = sparse(C.data)
+    S = @distributed (+) for i=1:nr:(C.n*nr)
+        Ri = R[:,i:(i + nr - 1)]
+        if nnz(Ri) != 0
+            Si = Ri*(Ri*Cs)'
+        else
+            Si = spzeros(Rnr,Rnr)
+        end
+        Si
+    end
+
+    return Array(S)
+end
+
 function LinearAlgebra.inv(A::RepeatedBlockDiagonal)
     RepeatedBlockDiagonal(inv(A.data),A.n)
 end
@@ -154,7 +171,7 @@ function ep_cov(energy, pitch, sigE, sigp)
     npitch = length(pitch)
     nep = nenergy*npitch
 
-    Σ_ep = zeros(nep,nep)
+    Σ_ep = zeros(typeof(sigE),nep,nep)
     Σ_p_inv = SMatrix{2,2}(inv(Diagonal([sigE,sigp].^2)))
     subs = CartesianIndices((nenergy,npitch))
     @inbounds for i=1:nep
