@@ -148,8 +148,9 @@ function transform_eprz_cov2(C,R)
     nr,nc = size(C.data)
     Rnr = size(R)[1]
     Cs = sparse(C.data)
+
     S = @distributed (+) for i=1:nr:(C.n*nr)
-        Ri = R[:,i:(i + nr - 1)]
+        Ri = R[:,i:(i+nr-1)]
         if nnz(Ri) != 0
             Si = Ri*(Ri*Cs)'
         else
@@ -159,6 +160,27 @@ function transform_eprz_cov2(C,R)
     end
 
     return Array(S)
+end
+
+function transform_eprz_cov3(C,R)
+    nr,nc = size(C.data)
+    Rnr = size(R)[1]
+    Cs = sparse(C.data)
+
+    Ris = SparseMatrixCSC{Float64,Int64}[]
+    for i=1:nr:(C.n*nr)
+        Ri = R[:,i:(i+nr-1)]
+        nnz(Ri) == 0 && continue
+        push!(Ris,Ri)
+    end
+
+    Si = [zeros(Rnr,Rnr) for i=1:Threads.nthreads()]
+    Threads.@threads for Ri in Ris
+        id = Threads.threadid()
+        Si[id] .= Si[id] .+ Ri*(Ri*Cs)'
+    end
+
+    return sum(Si)
 end
 
 function LinearAlgebra.inv(A::RepeatedBlockDiagonal)
