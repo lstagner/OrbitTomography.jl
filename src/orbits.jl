@@ -409,17 +409,20 @@ function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vect
     end
 
     d = zeros(length(energy),length(pitch))
-    @showprogress "Calculating Local Distribution..." for i=1:nenergy, j=1:npitch
-        v, detJ = eprz_to_eprt(M, energy[i], pitch[j], r, z; kwargs...)
-        if nearest
-            idxs, dists = knn(tree,v[1:3],1,false)
-            ii,jj,kk = Tuple(inds[idxs[1]])
-        else
-            ii = argmin(abs.(v[1] .- grid.energy))
-            jj = argmin(abs.(v[2] .- grid.pitch))
-            kk = argmin(abs.(v[3] .- grid.r))
+    for i=1:nenergy, j=1:npitch
+        for rr in r, zz in z
+            v, detJ = eprz_to_eprt(M, energy[i], pitch[j], rr, zz; kwargs...)
+            if nearest
+                idxs, dists = knn(tree,v[1:3],1,false)
+                ii,jj,kk = Tuple(inds[idxs[1]])
+            else
+                ii = argmin(abs.(v[1] .- grid.energy))
+                jj = argmin(abs.(v[2] .- grid.pitch))
+                kk = argmin(abs.(v[3] .- grid.r))
+            end
+            d[i,j] = d[i,j] + detJ*f3d[ii,jj,kk]
         end
-        d[i,j] = detJ*f3d[ii,jj,kk]
     end
+    d = d/(length(r)*length(z))
     return LocalDistribution(d,energy,pitch)
 end
