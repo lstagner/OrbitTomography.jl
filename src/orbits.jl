@@ -409,9 +409,10 @@ function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vect
     end
 
     d = zeros(length(energy),length(pitch))
-    for i=1:nenergy, j=1:npitch
+    @showprogress for i=1:nenergy, j=1:npitch
         for rr in r, zz in z
             v, detJ = eprz_to_eprt(M, energy[i], pitch[j], rr, zz; kwargs...)
+            detJ == 0 && continue
             if nearest
                 idxs, dists = knn(tree,v[1:3],1,false)
                 ii,jj,kk = Tuple(inds[idxs[1]])
