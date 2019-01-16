@@ -234,3 +234,64 @@ function eprz_cov(energy, pitch, r, z, p::Vector)
     end
     return RepeatedBlockDiagonal(Σ_ep,nr*nz)
 end
+
+function get_covariance(M::AxisymmetricEquilibrium, o1::Orbit, J1::Vector, o2::Orbit, J2::Vector, sigma::Vector)
+    n1 = length(o1.path)
+    n2 = length(o2.path)
+    if n1 == 0 || n2 == 0
+        return 0.0
+    end
+
+    # change storage to be more memory cache friendly
+    eprz1 = vcat(o1.path.energy',o1.path.pitch',o1.path.r',o1.path.z')
+    eprz2 = vcat(o2.path.energy',o2.path.pitch',o2.path.r',o2.path.z')
+
+    Σ_p_inv = SMatrix{4,4}(inv(Diagonal(sigma.^2)))
+    K = 0.0
+    @inbounds for i=1:n1
+        J1i = J1[i]
+        x = SVector{4}(eprz1[:,i])
+        Kj = 0.0
+        for j=1:n2
+            J2j = J2[j]
+            y = SVector{4}(eprz2[:,j])
+            d = x .- y
+            l = d'*Σ_p_inv*d
+            Kj += J2j*exp(-0.5*l)
+        end
+        K += J1i*Kj/n2
+    end
+    K = K/n1
+
+    return K
+end
+
+function get_covariance(M::AxisymmetricEquilibrium, o1::Orbit, o2::Orbit, sigma; kwargs...)
+    J1 = get_jacobian(M, o1)
+    J2 = get_jacobian(M, o2)
+    return get_covariance(M, o1, J1, o2, J2, sigma; kwargs...)
+end
+
+function get_covariance(M::AxisymmetricEquilibrium, c1::T, c2::T, sigma; kwargs...) where T
+    o1 = get_orbit(M, c1; kwargs...)
+    o2 = get_orbit(M, c2; kwargs...)
+    return get_covariance(M, o1, o2, sigma)
+end
+
+function get_correlation(M::AxisymmetricEquilibrium, o1::T, o2::T, sigma; k1 = nothing, k2 = nothing, kwargs...) where T
+    if k1 == nothing
+        k11 = get_covariance(M, o1, o1, sigma; kwargs...)
+    else
+        k11 = k1
+    end
+    if k2 == nothing
+        k22 = get_covariance(M, o2, o2, sigma; kwargs...)
+    else
+        k22 = k2
+    end
+    if k11 == 0.0 || k22 == 0.0
+        return k11*k22
+    end
+    k12 = get_covariance(M, o1, o2, sigma; kwargs...)
+    return k12/sqrt(k11*k22)
+end

@@ -39,6 +39,7 @@ export merge_spectra_geometry
 include("covariance.jl")
 export epr_cov
 export RepeatedBlockDiagonal, ep_cov, eprz_cov,transform_eprz_cov
+export get_covariance, get_correlation
 
 include("orbits.jl")
 export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
