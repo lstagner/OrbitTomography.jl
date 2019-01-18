@@ -353,7 +353,7 @@ function combine_orbits(orbits)
     tau_t = tau_p/norbits
 
     cc = EPRCoordinate(ec,pc,rc,zc,c.amu,c.q)
-    path = OrbitPath(r,z,phi,pitch,energy,dt)#,dl)
+    path = OrbitPath(energy,pitch,r,z,phi,dt)#,dl)
 
     if all(x -> x.class == orbits[1].class, orbits)
         class = orbits[1].class
