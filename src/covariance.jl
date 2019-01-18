@@ -235,12 +235,14 @@ function eprz_cov(energy, pitch, r, z, p::Vector)
     return RepeatedBlockDiagonal(Σ_ep,nr*nz)
 end
 
-function get_covariance(M::AxisymmetricEquilibrium, o1::Orbit, J1::Vector, o2::Orbit, J2::Vector, sigma::Vector)
+function get_covariance(M::AxisymmetricEquilibrium, o1::Orbit, J1::Vector, o2::Orbit, J2::Vector, sigma::Vector, dt::Int)
     n1 = length(o1.path)
     n2 = length(o2.path)
     if n1 == 0 || n2 == 0
         return 0.0
     end
+    n1r = length(1:dt:n1)
+    n2r = length(1:dt:n2)
 
     # change storage to be more memory cache friendly
     eprz1 = vcat(o1.path.energy',o1.path.pitch',o1.path.r',o1.path.z')
@@ -248,50 +250,168 @@ function get_covariance(M::AxisymmetricEquilibrium, o1::Orbit, J1::Vector, o2::O
 
     Σ_p_inv = SMatrix{4,4}(inv(Diagonal(sigma.^2)))
     K = 0.0
-    @inbounds for i=1:n1
+    @inbounds for i=1:dt:n1
         J1i = J1[i]
         x = SVector{4}(eprz1[:,i])
         Kj = 0.0
-        for j=1:n2
+        for j=1:dt:n2
             J2j = J2[j]
             y = SVector{4}(eprz2[:,j])
             d = x .- y
             l = d'*Σ_p_inv*d
             Kj += J2j*exp(-0.5*l)
         end
-        K += J1i*Kj/n2
+        K += J1i*Kj/n2r
     end
-    K = K/n1
+    K = K/n1r
 
     return K
 end
 
-function get_covariance(M::AxisymmetricEquilibrium, o1::Orbit, o2::Orbit, sigma; kwargs...)
-    J1 = get_jacobian(M, o1)
-    J2 = get_jacobian(M, o2)
-    return get_covariance(M, o1, J1, o2, J2, sigma; kwargs...)
+function get_covariance(M::AxisymmetricEquilibrium, o::Orbit, sigma;
+                        J::Vector{Float64} = Float64[], dt::Int = 1, kwargs...)
+    if isempty(J)
+        J1 = get_jacobian(M, o; kwargs...)
+    else
+        J1 = J
+    end
+    return get_covariance(M, o, J1, o, J1, sigma, dt)
 end
 
-function get_covariance(M::AxisymmetricEquilibrium, c1::T, c2::T, sigma; kwargs...) where T
+function get_covariance(M::AxisymmetricEquilibrium, o1::Orbit, o2::Orbit, sigma;
+                        J1::Vector{Float64} = Float64[],
+                        J2::Vector{Float64} = Float64[], dt::Int = 1, kwargs...)
+    if isempty(J1)
+        J11 = get_jacobian(M, o1; kwargs...)
+    else
+        J11 = J1
+    end
+    if isempty(J2)
+        J22 = get_jacobian(M, o2; kwargs...)
+    else
+        J22 = J2
+    end
+    return get_covariance(M, o1, J11, o2, J22, sigma, dt)
+end
+
+function get_covariance(M::AxisymmetricEquilibrium, c1::T, c2::T, sigma;
+                        dt::Int = 1, kwargs...) where T
     o1 = get_orbit(M, c1; kwargs...)
     o2 = get_orbit(M, c2; kwargs...)
-    return get_covariance(M, o1, o2, sigma)
+    return get_covariance(M, o1, o2, sigma; dt=dt, kwargs...)
 end
 
-function get_correlation(M::AxisymmetricEquilibrium, o1::T, o2::T, sigma; k1 = nothing, k2 = nothing, kwargs...) where T
-    if k1 == nothing
-        k11 = get_covariance(M, o1, o1, sigma; kwargs...)
+function get_correlation(M::AxisymmetricEquilibrium, o1::T, o2::T, sigma;
+                         k1::Float64 = 0.0, k2::Float64 = 0.0,
+                         J1::Vector{Float64} = Float64[],
+                         J2::Vector{Float64} = Float64[],
+                         dt::Int = 1, kwargs...) where T
+
+    if isempty(J1)
+        J11 = get_jacobian(M, o1; kwargs...)
+    else
+        J11 = J1
+    end
+
+    if isempty(J2)
+        J22 = get_jacobian(M, o2; kwargs...)
+    else
+        J22 = J2
+    end
+
+    if k1 == 0.0
+        k11 = get_covariance(M, o1, J11, o1, J11, sigma, dt)
     else
         k11 = k1
     end
-    if k2 == nothing
-        k22 = get_covariance(M, o2, o2, sigma; kwargs...)
+
+    if k2 == 0.0
+        k22 = get_covariance(M, o2, J22, o2, J22, sigma, dt)
     else
         k22 = k2
     end
+
     if k11 == 0.0 || k22 == 0.0
         return k11*k22
     end
-    k12 = get_covariance(M, o1, o2, sigma; kwargs...)
+
+    k12 = get_covariance(M, o1, J11, o2, J22, sigma, dt)
+
     return k12/sqrt(k11*k22)
+end
+
+function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
+                                ks::Vector{Float64} = Float64[],
+                                Js::Vector{Vector{Float64}} = Vector{Float64}[],
+                                dt::Int = 1, kwargs...)
+    n = length(orbits)
+    if isempty(Js)
+        J = Array{Vector{Float64}}(undef, n)
+        @inbounds Threads.@threads for i=1:n
+            oi = orbits[i]
+            Ji = get_jacobian(M, oi; kwargs...)
+            J[i] = Ji
+        end
+    else
+        J = Js
+    end
+
+    if isempty(ks)
+        K = zeros(n)
+        @inbounds Threads.@threads for i=1:n
+            oi = orbits[i]
+            Ji = J[i]
+            ki = get_covariance(M, oi, sigma; J = Ji, dt = dt)
+            K[i] = ki
+        end
+    else
+        K = ks
+    end
+
+    Σ = zeros(n,n)
+    @time begin
+    @inbounds Threads.@threads for i=1:n
+        oi = orbits[i]
+        Σ[i,i] = 1.0
+        Ji = J[i]
+        ki = K[i]
+        for j=(i+1):n
+            oj = orbits[j]
+            Jj = J[j]
+            kj = K[j]
+            Σ[i,j] = get_correlation(M, oi, oj, sigma, J1=Ji, J2=Jj, k1=ki, k2=kj, dt = dt)
+            Σ[j,i] = Σ[i,j]
+        end
+    end
+    end
+    return Σ
+end
+
+function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
+                               dt::Int = 1, Js::Vector{Vector{Float64}} = Vector{Float64}[], kwargs...)
+    n = length(orbits)
+    Σ = zeros(n,n)
+
+    if isempty(Js)
+        J = Array{Vector{Float64}}(undef, n)
+        @inbounds Threads.@threads for i=1:n
+            oi = orbits[i]
+            J[i] = get_jacobian(M, oi; kwargs...)
+        end
+    else
+        J = Js
+    end
+
+    @inbounds Threads.@threads for i=1:n
+        oi = orbits[i]
+        Ji = J[i]
+        Σ[i,i] = get_covariance(M, oi, sigma; J = Ji, dt = dt)
+        for j=(i+1):n
+            oj = orbits[j]
+            Jj = J[j]
+            Σ[i,j] = get_covariance(M, oi, Ji, oj, Jj, sigma, dt)
+            Σ[j,i] = Σ[i,j]
+        end
+    end
+    return Σ
 end
