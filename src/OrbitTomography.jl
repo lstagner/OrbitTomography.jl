@@ -26,6 +26,11 @@ using HCubature
 using Interpolations
 import IterTools: nth
 
+const S3 = SVector{3}
+const S4 = SVector{4}
+const S33 = SMatrix{3,3}
+const S44 = SMatrix{4,4}
+
 include("spectra.jl")
 export InstrumentalResponse, kernel
 export ExperimentalSpectra, TheoreticalSpectra
@@ -38,16 +43,17 @@ export split_particles, fbm2mc
 export FIDASIMBeamGeometry, FIDASIMSpectraGeometry, FIDASIMNPAGeometry, write_fidasim_geometry
 export merge_spectra_geometry
 
-include("covariance.jl")
-export epr_cov
-export RepeatedBlockDiagonal, ep_cov, eprz_cov,transform_eprz_cov
-export get_covariance, get_correlation, get_correlation_matrix, get_covariance_matrix
-export make_orbit_spline
-
 include("orbits.jl")
 export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
 export write_orbit_grid, read_orbit_grid, LocalDistribution, local_distribution
 export orbit_index, orbit_matrix
+export OrbitSpline
+
+include("covariance.jl")
+export epr_cov
+export RepeatedBlockDiagonal, ep_cov, eprz_cov,transform_eprz_cov
+export get_covariance, get_correlation, get_correlation_matrix, get_covariance_matrix
+
 
 include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight

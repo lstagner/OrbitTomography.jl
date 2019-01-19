@@ -430,3 +430,34 @@ function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vect
     d = d/(length(r)*length(z))
     return LocalDistribution(d,detJ,energy,pitch)
 end
+
+struct OrbitSpline{T<:Function}
+    n::Int
+    itp::T
+end
+
+@inline (os::OrbitSpline)(x) = os.itp(x)
+@inline Base.length(os::OrbitSpline) = os.n
+
+function OrbitSpline(p::OrbitPath, t)
+    eprz = hcat(p.energy,p.pitch,p.r,p.z)
+    oi = scale(interpolate(eprz, (BSpline(Cubic(Periodic(OnGrid()))), NoInterp())), t, 1:4)
+    return OrbitSpline(length(t), x -> S4(oi.(x,1:4)))
+end
+
+function OrbitSpline(o::Orbit, t)
+    return OrbitSpline(o.path, t)
+end
+
+function OrbitSpline(o::Orbit)
+    t = range(0.0, stop=1.0, length=length(o))
+    return OrbitSpline(o.path, t)
+end
+
+function OrbitSpline(p::OrbitPath)
+    t = range(0.0, stop=1.0, length=length(p))
+    return OrbitSpline(p, t)
+end
+
+OrbitSpline(o::OrbitSpline) = o
+OrbitSpline(o::OrbitSpline, t) = o
