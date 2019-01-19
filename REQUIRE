@@ -12,3 +12,5 @@ ProgressMeter
 NearestNeighbors
 StaticArrays
 NonNegLeastSquares
+Interpolations
+HCubature

@@ -22,6 +22,8 @@ using NearestNeighbors
 using SparseArrays
 using StaticArrays
 using NonNegLeastSquares
+using HCubature
+using Interpolations
 import IterTools: nth
 
 include("spectra.jl")
@@ -40,6 +42,7 @@ include("covariance.jl")
 export epr_cov
 export RepeatedBlockDiagonal, ep_cov, eprz_cov,transform_eprz_cov
 export get_covariance, get_correlation, get_correlation_matrix, get_covariance_matrix
+export make_orbit_spline
 
 include("orbits.jl")
 export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit

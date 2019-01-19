@@ -235,98 +235,146 @@ function eprz_cov(energy, pitch, r, z, p::Vector)
     return RepeatedBlockDiagonal(Σ_ep,nr*nz)
 end
 
-function get_covariance(M::AxisymmetricEquilibrium, o1::Orbit, J1::Vector, o2::Orbit, J2::Vector, sigma::Vector, dt::Int)
-    n1 = length(o1.path)
-    n2 = length(o2.path)
+const S4 = SVector{4}
+const S44 = SMatrix{4,4}
+
+function eprz_kernel(x,y,Σ_inv)
+    d = x .- y
+    l = d'*Σ_inv*d
+    return exp(-0.5*l)
+end
+
+function make_orbit_spline(p::OrbitPath, t)
+    eprz = hcat(p.energy,p.pitch,p.r,p.z)
+    oi = scale(interpolate(eprz, (BSpline(Cubic(Periodic(OnGrid()))), NoInterp())), t, 1:4)
+    return x -> S4(oi.(x,1:4))
+end
+
+function make_orbit_spline(o::Orbit, t)
+    return make_orbit_spline(o.path, t)
+end
+
+function make_orbit_spline(o::Orbit)
+    t = range(0.0, stop=1.0, length=length(o))
+    return make_orbit_spline(o.path, t)
+end
+
+function make_orbit_spline(p::OrbitPath)
+    t = range(0.0, stop=1.0, length=length(p))
+    return make_orbit_spline(p, t)
+end
+
+make_orbit_spline(o::T, t) where T<:Function = o
+
+function make_jacobian_spline(J::Vector{T}, t) where T<:Number
+    Js = scale(interpolate(J, BSpline(Cubic(Periodic(OnGrid())))), t)
+    return Js
+end
+
+make_jacobian_spline(J::T, t) where T<:AbstractInterpolation = J
+
+function get_covariance(o1::T, J1::S, o2::T, J2::S, Σ_inv::S44, atol) where {T<:Function, S<:AbstractInterpolation}
+    K, kerr = hcubature(x -> J1(x[1])*J2(x[2])*eprz_kernel(o1(x[1]), o2(x[2]), Σ_inv),
+                        (0.0,0.0), (1.0,1.0), atol=atol)
+    return abs(K)
+end
+
+function get_covariance(o1::T, J1::S, o2::T, J2::S, sigma::Vector, atol) where {T<:Function, S<:AbstractInterpolation}
+    Σ_inv = S44(inv(Diagonal(sigma.^2)))
+    return get_covariance(o1, J1, o2, J2, Σ_inv, atol)
+end
+
+function get_covariance(M::AxisymmetricEquilibrium, o, sigma;
+                        J = Float64[], atol = 1e-3, kwargs...)
+
+    n = length(o)
+    t = range(0.0, stop=1.0, length = n)
+    oi = make_orbit_spline(o, t)
+    if isempty(J)
+        J1i = make_jacobian_spline(get_jacobian(M, o; kwargs...),t)
+    else
+        J1i = make_jacobian_spline(J, t)
+    end
+
+    return get_covariance(oi, J1i, oi, J1i, sigma, atol)
+end
+
+function get_covariance(M::AxisymmetricEquilibrium, o1, o2, sigma;
+                        J1 = Float64[], J2 = Float64[], atol=1e-3, kwargs...)
+
+    n1 = length(o1)
+    n2 = length(o2)
     if n1 == 0 || n2 == 0
         return 0.0
     end
-    n1r = length(1:dt:n1)
-    n2r = length(1:dt:n2)
 
-    # change storage to be more memory cache friendly
-    eprz1 = vcat(o1.path.energy',o1.path.pitch',o1.path.r',o1.path.z')
-    eprz2 = vcat(o2.path.energy',o2.path.pitch',o2.path.r',o2.path.z')
+    t1 = range(0.0, stop=1.0, length=n1)
+    o1i = make_orbit_spline(o1, t1)
 
-    Σ_p_inv = SMatrix{4,4}(inv(Diagonal(sigma.^2)))
-    K = 0.0
-    @inbounds for i=1:dt:n1
-        J1i = J1[i]
-        x = SVector{4}(eprz1[:,i])
-        Kj = 0.0
-        for j=1:dt:n2
-            J2j = J2[j]
-            y = SVector{4}(eprz2[:,j])
-            d = x .- y
-            l = d'*Σ_p_inv*d
-            Kj += J2j*exp(-0.5*l)
-        end
-        K += J1i*Kj/n2r
-    end
-    K = K/n1r
+    t2 = range(0.0, stop=1.0, length=n2)
+    o2i = make_orbit_spline(o2, t2)
 
-    return K
-end
-
-function get_covariance(M::AxisymmetricEquilibrium, o::Orbit, sigma;
-                        J::Vector{Float64} = Float64[], dt::Int = 1, kwargs...)
-    if isempty(J)
-        J1 = get_jacobian(M, o; kwargs...)
-    else
-        J1 = J
-    end
-    return get_covariance(M, o, J1, o, J1, sigma, dt)
-end
-
-function get_covariance(M::AxisymmetricEquilibrium, o1::Orbit, o2::Orbit, sigma;
-                        J1::Vector{Float64} = Float64[],
-                        J2::Vector{Float64} = Float64[], dt::Int = 1, kwargs...)
     if isempty(J1)
-        J11 = get_jacobian(M, o1; kwargs...)
+        J1i = make_jacobian_spline(get_jacobian(M, o1; kwargs...), t1)
     else
-        J11 = J1
+        J1i = make_jacobian_spline(J1, t1)
     end
+
     if isempty(J2)
-        J22 = get_jacobian(M, o2; kwargs...)
+        J2i = make_jacobian_spline(get_jacobian(M, o2; kwargs...), t2)
     else
-        J22 = J2
+        J2i = make_jacobian_spline(J2, t2)
     end
-    return get_covariance(M, o1, J11, o2, J22, sigma, dt)
+
+    return get_covariance(o1i, J1i, o2i, J2i, sigma, atol)
 end
 
 function get_covariance(M::AxisymmetricEquilibrium, c1::T, c2::T, sigma;
-                        dt::Int = 1, kwargs...) where T
+                         k1::Float64 = 0.0, k2::Float64 = 0.0,
+                         J1 = Float64[], J2 = Float64[],
+                        atol = 1e-3, kwargs...) where T <: Union{AbstractOrbitCoordinate,AbstractParticle}
     o1 = get_orbit(M, c1; kwargs...)
     o2 = get_orbit(M, c2; kwargs...)
-    return get_covariance(M, o1, o2, sigma; dt=dt, kwargs...)
+    return get_covariance(M, o1, o2, sigma; J1 = J1, k1 = k1, J2 = J2, k2 = k2, atol = atol, kwargs...)
 end
 
-function get_correlation(M::AxisymmetricEquilibrium, o1::T, o2::T, sigma;
+function get_correlation(M::AxisymmetricEquilibrium, o1, o2, sigma;
                          k1::Float64 = 0.0, k2::Float64 = 0.0,
-                         J1::Vector{Float64} = Float64[],
-                         J2::Vector{Float64} = Float64[],
-                         dt::Int = 1, kwargs...) where T
+                         J1 = Float64[], J2 = Float64[],
+                         atol = 1e-3, kwargs...)
+
+    n1 = length(o1)
+    n2 = length(o2)
+    if n1 == 0 || n2 == 0
+        return 0.0
+    end
+
+    t1 = range(0.0, stop=1.0, length=n1)
+    o1i = make_orbit_spline(o1, t1)
+
+    t2 = range(0.0, stop=1.0, length=n2)
+    o2i = make_orbit_spline(o2, t2)
 
     if isempty(J1)
-        J11 = get_jacobian(M, o1; kwargs...)
+        J1i = make_jacobian_spline(get_jacobian(M, o1; kwargs...), t1)
     else
-        J11 = J1
+        J1i = make_jacobian_spline(J1, t1)
     end
 
     if isempty(J2)
-        J22 = get_jacobian(M, o2; kwargs...)
+        J2i = make_jacobian_spline(get_jacobian(M, o2; kwargs...), t2)
     else
-        J22 = J2
+        J2i = make_jacobian_spline(J2, t2)
     end
 
     if k1 == 0.0
-        k11 = get_covariance(M, o1, J11, o1, J11, sigma, dt)
+        k11 = get_covariance(o1i, J1i, o1i, J1i, sigma, atol)
     else
         k11 = k1
     end
 
     if k2 == 0.0
-        k22 = get_covariance(M, o2, J22, o2, J22, sigma, dt)
+        k22 = get_covariance(o2i, J2i, o2i, J2i, sigma, atol)
     else
         k22 = k2
     end
@@ -335,7 +383,7 @@ function get_correlation(M::AxisymmetricEquilibrium, o1::T, o2::T, sigma;
         return k11*k22
     end
 
-    k12 = get_covariance(M, o1, J11, o2, J22, sigma, dt)
+    k12 = get_covariance(o1i, J1i, o2i, J2i, sigma, atol)
 
     return k12/sqrt(k11*k22)
 end
@@ -343,74 +391,220 @@ end
 function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
                                 ks::Vector{Float64} = Float64[],
                                 Js::Vector{Vector{Float64}} = Vector{Float64}[],
-                                dt::Int = 1, kwargs...)
+                                atol = 1e-3, kwargs...)
+
     n = length(orbits)
+    ns = length.(orbits)
+    ts = [range(0.0, stop=1.0, length=nn) for nn in ns]
+    orbs = [make_orbit_spline(o, t) for (o, t) in zip(orbits,ts)]
+
     if isempty(Js)
         J = Array{Vector{Float64}}(undef, n)
         @inbounds Threads.@threads for i=1:n
-            oi = orbits[i]
+            oi = orbits[i]::Orbit
             Ji = get_jacobian(M, oi; kwargs...)
             J[i] = Ji
         end
     else
         J = Js
     end
+    Jis = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J,ts)]
+
+    Σ_inv = S44(inv(Diagonal(sigma.^2)))
 
     if isempty(ks)
         K = zeros(n)
         @inbounds Threads.@threads for i=1:n
-            oi = orbits[i]
-            Ji = J[i]
-            ki = get_covariance(M, oi, sigma; J = Ji, dt = dt)
-            K[i] = ki
+            oi = orbs[i]
+            Ji = Jis[i]
+            K[i] = get_covariance(oi, Ji, oi, Ji, Σ_inv, atol)
         end
     else
         K = ks
     end
 
     Σ = zeros(n,n)
-    @time begin
     @inbounds Threads.@threads for i=1:n
-        oi = orbits[i]
-        Σ[i,i] = 1.0
-        Ji = J[i]
+        oi = orbs[i]
+        Ji = Jis[i]
         ki = K[i]
+        Σ[i,i] = 1.0
         for j=(i+1):n
-            oj = orbits[j]
-            Jj = J[j]
+            oj = orbs[j]
+            Jj = Jis[j]
             kj = K[j]
-            Σ[i,j] = get_correlation(M, oi, oj, sigma, J1=Ji, J2=Jj, k1=ki, k2=kj, dt = dt)
+            Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
             Σ[j,i] = Σ[i,j]
         end
     end
+    return Σ
+end
+
+function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::Vector;
+                                ks_1::Vector{Float64} = Float64[],
+                                Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
+                                ks_2::Vector{Float64} = Float64[],
+                                Js_2::Vector{Vector{Float64}} = Vector{Float64}[],
+                                atol = 1e-3, kwargs...)
+
+    Σ_inv = S44(inv(Diagonal(sigma.^2)))
+
+    n1 = length(orbits_1)
+    ns1 = length.(orbits_1)
+    ts1 = [range(0.0, stop=1.0, length=nn) for nn in ns1]
+    orbs1 = [make_orbit_spline(o, t) for (o, t) in zip(orbits_1,ts1)]
+
+    if isempty(Js_1)
+        J1 = Array{Vector{Float64}}(undef, n1)
+        @inbounds Threads.@threads for i=1:n1
+            oi = orbits_1[i]::Orbit
+            Ji = get_jacobian(M, oi; kwargs...)
+            J1[i] = Ji
+        end
+    else
+        J1 = Js_1
+    end
+    Jis1 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J1,ts1)]
+
+    if isempty(ks_1)
+        K1 = zeros(n1)
+        @inbounds Threads.@threads for i=1:n1
+            oi = orbs1[i]
+            Ji = Jis1[i]
+            K1[i] = get_covariance(oi, Ji, oi, Ji, Σ_inv, atol)
+        end
+    else
+        K1 = ks_1
+    end
+
+    n2 = length(orbits_2)
+    ns2 = length.(orbits_2)
+    ts2 = [range(0.0, stop=1.0, length=nn) for nn in ns2]
+    orbs2 = [make_orbit_spline(o, t) for (o, t) in zip(orbits_2,ts2)]
+
+    if isempty(Js_2)
+        J2 = Array{Vector{Float64}}(undef, n2)
+        @inbounds Threads.@threads for i=1:n2
+            oi = orbits_2[i]::Orbit
+            Ji = get_jacobian(M, oi; kwargs...)
+            J2[i] = Ji
+        end
+    else
+        J2 = Js_2
+    end
+    Jis2 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J2,ts2)]
+
+    if isempty(ks_2)
+        K2 = zeros(n2)
+        @inbounds Threads.@threads for i=1:n2
+            oi = orbs2[i]
+            Ji = Jis2[i]
+            K2[i] = get_covariance(oi, Ji, oi, Ji, Σ_inv, atol)
+        end
+    else
+        K2 = ks_2
+    end
+
+    Σ = zeros(n1,n2)
+    @inbounds Threads.@threads for j=1:n2
+        oj = orbs2[j]
+        Jj = Jis2[j]
+        kj = K2[j]
+        for i=1:n1
+            oi = orbs1[i]
+            Ji = Jis1[i]
+            ki = K1[i]
+            Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
+        end
     end
     return Σ
 end
 
 function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
-                               dt::Int = 1, Js::Vector{Vector{Float64}} = Vector{Float64}[], kwargs...)
+                               Js::Vector{Vector{Float64}} = Vector{Float64}[], atol=1e-3, kwargs...)
     n = length(orbits)
-    Σ = zeros(n,n)
+    ns = length.(orbits)
+    ts = [range(0.0, stop=1.0, length=nn) for nn in ns]
+    orbs = [make_orbit_spline(o, t) for (o, t) in zip(orbits,ts)]
 
     if isempty(Js)
         J = Array{Vector{Float64}}(undef, n)
         @inbounds Threads.@threads for i=1:n
-            oi = orbits[i]
-            J[i] = get_jacobian(M, oi; kwargs...)
+            oi = orbits[i]::Orbit
+            Ji = get_jacobian(M, oi; kwargs...)
+            J[i] = Ji
         end
     else
         J = Js
     end
+    Jis = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J,ts)]
 
+    Σ_inv = S44(inv(Diagonal(sigma.^2)))
+
+    Σ = zeros(n,n)
     @inbounds Threads.@threads for i=1:n
-        oi = orbits[i]
-        Ji = J[i]
-        Σ[i,i] = get_covariance(M, oi, sigma; J = Ji, dt = dt)
+        oi = orbs[i]
+        Ji = Jis[i]
+        Σ[i,i] = get_covariance(oi, Ji, oi, Ji, Σ_inv, atol)
         for j=(i+1):n
-            oj = orbits[j]
-            Jj = J[j]
-            Σ[i,j] = get_covariance(M, oi, Ji, oj, Jj, sigma, dt)
+            oj = orbs[j]
+            Jj = Jis[j]
+            Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
             Σ[j,i] = Σ[i,j]
+        end
+    end
+    return Σ
+end
+
+function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::Vector;
+                                Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
+                                Js_2::Vector{Vector{Float64}} = Vector{Float64}[],
+                                atol = 1e-3, kwargs...)
+
+    Σ_inv = S44(inv(Diagonal(sigma.^2)))
+
+    n1 = length(orbits_1)
+    ns1 = length.(orbits_1)
+    ts1 = [range(0.0, stop=1.0, length=nn) for nn in ns1]
+    orbs1 = [make_orbit_spline(o, t) for (o, t) in zip(orbits_1,ts1)]
+
+    if isempty(Js_1)
+        J1 = Array{Vector{Float64}}(undef, n1)
+        @inbounds Threads.@threads for i=1:n1
+            oi = orbits_1[i]::Orbit
+            Ji = get_jacobian(M, oi; kwargs...)
+            J1[i] = Ji
+        end
+    else
+        J1 = Js_1
+    end
+    Jis1 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J1,ts1)]
+
+    n2 = length(orbits_2)
+    ns2 = length.(orbits_2)
+    ts2 = [range(0.0, stop=1.0, length=nn) for nn in ns2]
+    orbs2 = [make_orbit_spline(o, t) for (o, t) in zip(orbits_2,ts2)]
+
+    if isempty(Js_2)
+        J2 = Array{Vector{Float64}}(undef, n2)
+        @inbounds Threads.@threads for i=1:n2
+            oi = orbits_2[i]::Orbit
+            Ji = get_jacobian(M, oi; kwargs...)
+            J2[i] = Ji
+        end
+    else
+        J2 = Js_2
+    end
+    Jis2 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J2,ts2)]
+
+    Σ = zeros(n1,n2)
+    @inbounds Threads.@threads for j=1:n2
+        oj = orbs2[j]
+        Jj = Jis2[j]
+        for i=1:n1
+            oi = orbs1[i]
+            Ji = Jis1[i]
+            Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
         end
     end
     return Σ
