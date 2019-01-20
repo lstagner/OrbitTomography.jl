@@ -738,3 +738,8 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orb
     return compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol)
 
 end
+
+function get_correlation_matrix(cov)
+    K = sqrt.(diag(cov))
+    return cov./(K*K')
+end
