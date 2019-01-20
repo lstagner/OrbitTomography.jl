@@ -366,18 +366,21 @@ end
 function compute_correlation_matrix(orbs, Js, Ks, Σ_inv, atol)
     n = length(orbs)
     Σ = zeros(n,n)
-    @inbounds Threads.@threads for i=1:n
-        oi = orbs[i]
-        Ji = Js[i]
-        ki = Ks[i]
-        Σ[i,i] = 1.0
-        for j=(i+1):n
-            oj = orbs[j]
-            Jj = Js[j]
-            kj = Ks[j]
-            s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
-            Σ[i,j] = s
-            Σ[j,i] = s
+    N = Threads.nthreads()
+    Threads.@threads for id=1:N
+        @inbounds for i = id:N:n
+            oi = orbs[i]
+            Ji = Js[i]
+            ki = Ks[i]
+            Σ[i,i] = 1.0
+            for j=(i+1):n
+                oj = orbs[j]
+                Jj = Js[j]
+                kj = Ks[j]
+                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
+                Σ[i,j] = s
+                Σ[j,i] = s
+            end
         end
     end
     return Σ
@@ -385,21 +388,23 @@ end
 
 function compute_sparse_correlation_matrix(orbs, Js, Ks, Σ_inv, atol, minval)
     n = length(orbs)
-    Σs = [spzeros(n,n) for i=1:Threads.nthreads()]
-    @inbounds Threads.@threads for i=1:n
-        id = Threads.threadid()
-        oi = orbs[i]
-        Ji = Js[i]
-        ki = Ks[i]
-        Σs[id][i,i] = 1.0
-        for j=(i+1):n
-            oj = orbs[j]
-            Jj = Js[j]
-            kj = Ks[j]
-            s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
-            if s > minval
-                Σs[id][i,j] = s
-                Σs[id][j,i] = s
+    N = Threads.nthreads()
+    Σs = [spzeros(n,n) for i=1:N]
+    Threads.@threads for id=1:N
+        @inbounds for i = id:N:n
+            oi = orbs[i]
+            Ji = Js[i]
+            ki = Ks[i]
+            Σs[id][i,i] = 1.0
+            for j=(i+1):n
+                oj = orbs[j]
+                Jj = Js[j]
+                kj = Ks[j]
+                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
+                if s > minval
+                    Σs[id][i,j] = s
+                    Σs[id][j,i] = s
+                end
             end
         end
     end
@@ -411,15 +416,18 @@ function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, at
     n1 = length(orbs1)
     n2 = length(orbs2)
     Σ = zeros(n1,n2)
-    @inbounds Threads.@threads for j=1:n2
-        oj = orbs2[j]
-        Jj = Js2[j]
-        kj = Ks2[j]
-        for i=1:n1
-            oi = orbs1[i]
-            Ji = Js1[i]
-            ki = Ks1[i]
-            Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
+    N = Threads.nthreads()
+    Threads.@threads for id=1:N
+        @inbounds for j=id:N:n2
+            oj = orbs2[j]
+            Jj = Js2[j]
+            kj = Ks2[j]
+            for i=1:n1
+                oi = orbs1[i]
+                Ji = Js1[i]
+                ki = Ks1[i]
+                Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
+            end
         end
     end
     return Σ
@@ -428,19 +436,21 @@ end
 function compute_sparse_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, minval)
     n1 = length(orbs1)
     n2 = length(orbs2)
-    Σs = [spzeros(n1,n2) for i=1:Threads.nthreads()]
-    @inbounds Threads.@threads for j=1:n2
-        id = Threads.threadid()
-        oj = orbs2[j]
-        Jj = Js2[j]
-        kj = Ks2[j]
-        for i=1:n1
-            oi = orbs1[i]
-            Ji = Js1[i]
-            ki = Ks1[i]
-            s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
-            if s > minval
-                Σs[id][i,j] = s
+    N = Threads.nthreads()
+    Σs = [spzeros(n1,n2) for i=1:N]
+    Threads.@threads for id=1:N
+        @inbounds for j=id:N:n2
+            oj = orbs2[j]
+            Jj = Js2[j]
+            kj = Ks2[j]
+            for i=1:n1
+                oi = orbs1[i]
+                Ji = Js1[i]
+                ki = Ks1[i]
+                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
+                if s > minval
+                    Σs[id][i,j] = s
+                end
             end
         end
     end
@@ -450,16 +460,19 @@ end
 
 function compute_covariance_matrix(orbs, Js, Σ_inv, atol)
     n = length(orbs)
+    N = Threads.nthreads()
     Σ = zeros(n,n)
-    @inbounds Threads.@threads for i=1:n
-        oi = orbs[i]
-        Ji = Js[i]
-        for j=i:n
-            oj = orbs[j]
-            Jj = Js[j]
-            s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
-            Σ[i,j] = s
-            Σ[j,i] = s
+    Threads.@threads for id=1:N
+        @inbounds for i = id:N:n
+            oi = orbs[i]
+            Ji = Js[i]
+            for j=i:n
+                oj = orbs[j]
+                Jj = Js[j]
+                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
+                Σ[i,j] = s
+                Σ[j,i] = s
+            end
         end
     end
     return Σ
@@ -467,19 +480,21 @@ end
 
 function compute_sparse_covariance_matrix(orbs, Js, Σ_inv, atol, minval)
     n = length(orbs)
-    Σs = [spzeros(n,n) for i=1:Threads.nthreads()]
-    @inbounds Threads.@threads for i=1:n
-        id = Threads.threadid()
-        oi = orbs[i]
-        Ji = Js[i]
-        Σs[id][i,i] = 1.0
-        for j=(i+1):n
-            oj = orbs[j]
-            Jj = Js[j]
-            s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
-            if s > minval
-                Σs[id][i,j] = s
-                Σs[id][j,i] = s
+    N = Threads.nthreads()
+    Σs = [spzeros(n,n) for i=1:N]
+    Threads.@threads for id=1:N
+        @inbounds for i=id:N:n
+            oi = orbs[i]
+            Ji = Js[i]
+            Σs[id][i,i] = 1.0
+            for j=(i+1):n
+                oj = orbs[j]
+                Jj = Js[j]
+                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
+                if s > minval
+                    Σs[id][i,j] = s
+                    Σs[id][j,i] = s
+                end
             end
         end
     end
@@ -491,32 +506,37 @@ function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol)
     n1 = length(orbs1)
     n2 = length(orbs2)
     Σ = zeros(n1,n2)
-    @inbounds Threads.@threads for j=1:n2
-        oj = orbs2[j]
-        Jj = Js2[j]
-        for i=1:n1
-            oi = orbs1[i]
-            Ji = Js1[i]
-            Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
+    N = Threads.nthreads()
+    Threads.@threads for id=1:N
+        @inbounds for j=id:N:n2
+            oj = orbs2[j]
+            Jj = Js2[j]
+            for i=1:n1
+                oi = orbs1[i]
+                Ji = Js1[i]
+                Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
+            end
         end
     end
     return Σ
 end
 
-function compute_sparse_correlation_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval)
+function compute_sparse_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval)
     n1 = length(orbs1)
     n2 = length(orbs2)
-    Σs = [spzeros(n1,n2) for i=1:Threads.nthreads()]
-    @inbounds Threads.@threads for j=1:n2
-        id = Threads.threadid()
-        oj = orbs2[j]
-        Jj = Js2[j]
-        for i=1:n1
-            oi = orbs1[i]
-            Ji = Js1[i]
-            s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
-            if s > minval
-                Σs[id][i,j] = s
+    N = Threads.nthreads()
+    Σs = [spzeros(n1,n2) for i=1:N]
+    Threads.@threads for id=1:N
+        @inbounds for j=id:N:n2
+            oj = orbs2[j]
+            Jj = Js2[j]
+            for i=1:n1
+                oi = orbs1[i]
+                Ji = Js1[i]
+                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)
+                if s > minval
+                    Σs[id][i,j] = s
+                end
             end
         end
     end
