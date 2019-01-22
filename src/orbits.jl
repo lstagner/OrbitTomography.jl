@@ -450,12 +450,12 @@ function OrbitSpline(o::Orbit, t)
 end
 
 function OrbitSpline(o::Orbit)
-    t = range(0.0, stop=1.0, length=length(o))
+    t = range(0.0, 1.0, length=length(o))
     return OrbitSpline(o.path, t)
 end
 
 function OrbitSpline(p::OrbitPath)
-    t = range(0.0, stop=1.0, length=length(p))
+    t = range(0.0, 1.0, length=length(p))
     return OrbitSpline(p, t)
 end
 

@@ -263,7 +263,7 @@ function get_covariance(M::AxisymmetricEquilibrium, o, sigma;
                         J = Float64[], atol = 1e-3, kwargs...)
 
     n = length(o)
-    t = range(0.0, stop=1.0, length = n)
+    t = range(0.0, 1.0, length = n)
     oi = OrbitSpline(o, t)
     if isempty(J)
         J1i = make_jacobian_spline(get_jacobian(M, o; kwargs...),t)
@@ -283,10 +283,10 @@ function get_covariance(M::AxisymmetricEquilibrium, o1, o2, sigma;
         return 0.0
     end
 
-    t1 = range(0.0, stop=1.0, length=n1)
+    t1 = range(0.0, 1.0, length=n1)
     o1i = OrbitSpline(o1, t1)
 
-    t2 = range(0.0, stop=1.0, length=n2)
+    t2 = range(0.0, 1.0, length=n2)
     o2i = OrbitSpline(o2, t2)
 
     if isempty(J1)
@@ -324,10 +324,10 @@ function get_correlation(M::AxisymmetricEquilibrium, o1, o2, sigma;
         return 0.0
     end
 
-    t1 = range(0.0, stop=1.0, length=n1)
+    t1 = range(0.0, 1.0, length=n1)
     o1i = OrbitSpline(o1, t1)
 
-    t2 = range(0.0, stop=1.0, length=n2)
+    t2 = range(0.0, 1.0, length=n2)
     o2i = OrbitSpline(o2, t2)
 
     if isempty(J1)
@@ -441,7 +441,7 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma
                                minval::Float64 = atol, distributed = false, kwargs...)
     n = length(orbits)
     ns = length.(orbits)
-    ts = [range(0.0, stop=1.0, length=nn) for nn in ns]
+    ts = [range(0.0, 1.0, length=nn) for nn in ns]
     orbs = [OrbitSpline(o) for o in orbits]
 
     if isempty(Js)
@@ -568,7 +568,7 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orb
 
     n1 = length(orbits_1)
     ns1 = length.(orbits_1)
-    ts1 = [range(0.0, stop=1.0, length=nn) for nn in ns1]
+    ts1 = [range(0.0, 1.0, length=nn) for nn in ns1]
     orbs1 = [OrbitSpline(o) for o in orbits_1]
 
     if isempty(Js_1)
@@ -585,7 +585,7 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orb
 
     n2 = length(orbits_2)
     ns2 = length.(orbits_2)
-    ts2 = [range(0.0, stop=1.0, length=nn) for nn in ns2]
+    ts2 = [range(0.0, 1.0, length=nn) for nn in ns2]
     orbs2 = [OrbitSpline(o) for o in orbits_2]
 
     if isempty(Js_2)
@@ -696,7 +696,7 @@ function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, or
 
     n1 = length(orbits_1)
     ns1 = length.(orbits_1)
-    ts1 = [range(0.0, stop=1.0, length=nn) for nn in ns1]
+    ts1 = [range(0.0, 1.0, length=nn) for nn in ns1]
     orbs1 = [OrbitSpline(o) for o in orbits_1]
 
     if isempty(Js_1)
@@ -724,7 +724,7 @@ function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, or
 
     n2 = length(orbits_2)
     ns2 = length.(orbits_2)
-    ts2 = [range(0.0, stop=1.0, length=nn) for nn in ns2]
+    ts2 = [range(0.0, 1.0, length=nn) for nn in ns2]
     orbs2 = [OrbitSpline(o) for o in orbits_2]
 
     if isempty(Js_2)
