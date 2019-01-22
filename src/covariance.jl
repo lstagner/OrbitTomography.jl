@@ -410,12 +410,16 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval)
 end
 
 #1-arg Distributed Covariance
-function compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool::AbstractWorkerPool)
+function compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool::AbstractWorkerPool; batch_size = 0)
     n = length(orbs)
     indices = [(i,j) for i=1:n, j=1:n if i >= j]
 
+    if batch_size == 0
+        batch_size = round(Int, length(indices)/(5*nprocs()))
+    end
+
     c = pmap(x -> get_covariance(orbs[x[1]],Js[x[1]],orbs[x[2]],Js[x[2]], Σ_inv, atol),
-             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
+             pool, indices, on_error=x->0.0, batch_size=batch_size)
 
     Σ = zeros(n,n)
     for (ii,I) in enumerate(indices)
@@ -428,8 +432,8 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool::AbstractWorkerP
 end
 
 #1-arg Distributed Sparse Covariance
-function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval, pool::AbstractWorkerPool)
-    Σ = compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool)
+function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval, pool::AbstractWorkerPool; batch_size=0)
+    Σ = compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool, batch_size=batch_size)
     Σ[Σ .< minval] .= zero(eltype(Σ))
     return sparse(Σ)
 end
@@ -438,7 +442,8 @@ end
 function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
                                Js::Vector{Vector{Float64}} = Vector{Float64}[],
                                sparse::Bool = false, atol::Float64 = 1e-3,
-                               minval::Float64 = atol, distributed = false, kwargs...)
+                               minval::Float64 = atol, distributed = false,
+                               batch_size = 0, kwargs...)
     n = length(orbits)
     ns = length.(orbits)
     ts = [range(0.0, 1.0, length=nn) for nn in ns]
@@ -461,9 +466,9 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma
     if distributed
         pool = CachingPool(workers())
         if sparse
-            Σ = compute_covariance_matrix(orbs, Jis, Σ_inv, atol, minval, pool)
+            Σ = compute_covariance_matrix(orbs, Jis, Σ_inv, atol, minval, pool; batch_size=batch_size)
         else
-            Σ = compute_covariance_matrix(orbs, Jis, Σ_inv, atol, pool)
+            Σ = compute_covariance_matrix(orbs, Jis, Σ_inv, atol, pool; batch_size=batch_size)
         end
         clear!(pool)
         return Σ
@@ -486,10 +491,12 @@ end
 function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
                                 Js::Vector{Vector{Float64}} = Vector{Float64}[],
                                 sparse::Bool = false, atol::Float64 = 1e-3,
-                                minval::Float64 = atol, distributed = false, kwargs...)
+                                minval::Float64 = atol, distributed = false,
+                                batch_size = 0, kwargs...)
 
     Σ = get_covariance_matrix(M, orbits, sigma; Js=Js, sparse=sparse,
-                              atol=atol, minval=minval, distributed=distributed, kwargs...)
+                              atol=atol, minval=minval, distributed=distributed,
+                              batch_size=batch_size, kwargs...)
 
     return get_correlation_matrix(Σ)
 end
@@ -539,20 +546,24 @@ function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval)
 end
 
 #2-arg Distributed Covariance
-function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool::AbstractWorkerPool)
+function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool::AbstractWorkerPool; batch_size=0)
     n1 = length(orbs1)
     n2 = length(orbs2)
     indices = [(i,j) for i=1:n1, j=1:n2]
 
+    if batch_size == 0
+        batch_size = round(Int, length(indices)/(5*nprocs()))
+    end
+
     Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol),
-             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
+             pool, indices, on_error=x->0.0, batch_size=batch_size)
 
     return Σ
 end
 
 #2-arg Distributed Sparse Covariance
-function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval, pool::AbstractWorkerPool)
-    Σ = compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool)
+function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval, pool::AbstractWorkerPool; batch_size=0)
+    Σ = compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool; batch_size=batch_size)
     Σ[Σ .< minval] .= zero(eltype(Σ))
     return sparse(Σ)
 end
@@ -562,7 +573,8 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orb
                                 Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
                                 Js_2::Vector{Vector{Float64}} = Vector{Float64}[],
                                 sparse::Bool = false, atol::Float64 = 1e-3,
-                                minval::Float64 = atol, distributed=false, kwargs...)
+                                minval::Float64 = atol, distributed=false,
+                                batch_size=0, kwargs...)
 
     Σ_inv = S44(inv(Diagonal(sigma.^2)))
 
@@ -603,9 +615,9 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orb
     if distributed
         pool = CachingPool(workers())
         if sparse
-            Σ = compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol, minval, pool)
+            Σ = compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol, minval, pool; batch_size=batch_size)
         else
-            Σ = compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol, pool)
+            Σ = compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol, pool; batch_size=batch_size)
         end
         clear!(pool)
         return Σ
@@ -666,20 +678,24 @@ function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, at
 end
 
 #2-arg Distributed Correlation
-function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, pool::AbstractWorkerPool)
+function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, pool::AbstractWorkerPool; batch_size=0)
     n1 = length(orbs1)
     n2 = length(orbs2)
     indices = [(i,j) for i=1:n1, j=1:n2]
 
+    if batch_size == 0
+        batch_size = round(Int, length(indices)/(5*nprocs()))
+    end
+
     Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol)/sqrt(Ks1[x[1]]*Ks2[x[2]]),
-             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
+             pool, indices, on_error=x->0.0, batch_size=batch_size)
 
     return Σ
 end
 
 #2-arg Distributed Sparse Correlation
-function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, minval, pool::AbstractWorkerPool)
-    Σ = compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, pool)
+function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, minval, pool::AbstractWorkerPool; batch_size=0)
+    Σ = compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, pool; batch_size=batch_size)
     Σ[Σ .< minval] .= zero(eltype(Σ))
     return sparse(Σ)
 end
@@ -690,7 +706,8 @@ function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, or
                                 ks_2::Vector{Float64} = Float64[],
                                 Js_2::Vector{Vector{Float64}} = Vector{Float64}[],
                                 sparse::Bool = false, atol::Float64 = 1e-3,
-                                minval::Float64 = atol, distributed=false, kwargs...)
+                                minval::Float64 = atol, distributed=false,
+                                batch_size = 0, kwargs...)
 
     Σ_inv = S44(inv(Diagonal(sigma.^2)))
 
@@ -753,9 +770,9 @@ function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, or
     if distributed
         pool = CachingPool(workers())
         if sparse
-            Σ = compute_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol, minval, pool)
+            Σ = compute_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol, minval, pool, batch_size=batch_size)
         else
-            Σ = compute_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol, pool)
+            Σ = compute_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol, pool, batch_size=batch_size)
         end
         clear!(pool)
         return Σ
