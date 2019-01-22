@@ -478,6 +478,34 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol)
     return Σ
 end
 
+function compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool::AbstractWorkerPool)
+    n = length(orbs)
+    indices = [(i,j) for i=1:n, j=1:n if i >= j]
+
+    c = pmap(x -> get_covariance(orbs[x[1]],Js[x[1]],orbs[x[2]],Js[x[2]], Σ_inv, atol),
+             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
+
+    Σ = zeros(n,n)
+    for (ii,I) in enumerate(indices)
+        i,j = I
+        Σ[i,j] = c[ii]
+        Σ[j,i] = c[ii]
+    end
+
+    return Σ
+end
+
+function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool::AbstractWorkerPool)
+    n1 = length(orbs1)
+    n2 = length(orbs2)
+    indices = [(i,j) for i=1:n1, j=1:n2]
+
+    Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol),
+             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
+
+    return Σ
+end
+
 function compute_sparse_covariance_matrix(orbs, Js, Σ_inv, atol, minval)
     n = length(orbs)
     N = Threads.nthreads()
