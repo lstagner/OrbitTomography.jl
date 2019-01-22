@@ -1,10 +1,16 @@
-function marginal_loglike(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; mu=Float64[], norm=1e18/size(W,2))
+function marginal_loglike(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; mu=Float64[], norm=1e18/size(W,2), ntot=())
 
     nr,nc = size(W)
     if length(mu) == 0
         mu_X = zeros(nc)
     else
         mu_X = mu/norm
+    end
+
+    if !isempty(ntot)
+        W = vcat(W,ones(nc)')
+        d = vcat(d,ntot[1])
+        err = vcat(err, ntot[2]*ntot[1])
     end
 
     Σ_d = Diagonal(err.^2)
@@ -31,13 +37,19 @@ function marginal_loglike(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; mu=Fl
     return l
 end
 
-function solve(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; mu=Float64[], norm=1e18/size(W,2),nonneg=true)
+function solve(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; mu=Float64[], norm=1e18/size(W,2), ntot=(), nonneg=true)
 
     nr,nc = size(W)
     if length(mu) == 0
         mu_X = zeros(nc)
     else
         mu_X = mu/norm
+    end
+
+    if !isempty(ntot)
+        W = vcat(W,ones(nc)')
+        d = vcat(d,ntot[1])
+        err = vcat(err, ntot[2]*ntot[1])
     end
 
     Σ_d = Diagonal(err.^2)

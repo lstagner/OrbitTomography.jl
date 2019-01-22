@@ -363,101 +363,7 @@ function get_correlation(M::AxisymmetricEquilibrium, o1, o2, sigma;
     return k12/sqrt(k11*k22)
 end
 
-function compute_correlation_matrix(orbs, Js, Ks, Σ_inv, atol)
-    n = length(orbs)
-    Σ = zeros(n,n)
-    N = Threads.nthreads()
-    Threads.@threads for id=1:N
-        @inbounds for i = id:N:n
-            oi = orbs[i]
-            Ji = Js[i]
-            ki = Ks[i]
-            Σ[i,i] = 1.0
-            for j=(i+1):n
-                oj = orbs[j]
-                Jj = Js[j]
-                kj = Ks[j]
-                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
-                Σ[i,j] = s
-                Σ[j,i] = s
-            end
-        end
-    end
-    return Σ
-end
-
-function compute_sparse_correlation_matrix(orbs, Js, Ks, Σ_inv, atol, minval)
-    n = length(orbs)
-    N = Threads.nthreads()
-    Σs = [spzeros(n,n) for i=1:N]
-    Threads.@threads for id=1:N
-        @inbounds for i = id:N:n
-            oi = orbs[i]
-            Ji = Js[i]
-            ki = Ks[i]
-            Σs[id][i,i] = 1.0
-            for j=(i+1):n
-                oj = orbs[j]
-                Jj = Js[j]
-                kj = Ks[j]
-                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
-                if s > minval
-                    Σs[id][i,j] = s
-                    Σs[id][j,i] = s
-                end
-            end
-        end
-    end
-    Σ = sum(Σs)
-    return Σ
-end
-
-function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol)
-    n1 = length(orbs1)
-    n2 = length(orbs2)
-    Σ = zeros(n1,n2)
-    N = Threads.nthreads()
-    Threads.@threads for id=1:N
-        @inbounds for j=id:N:n2
-            oj = orbs2[j]
-            Jj = Js2[j]
-            kj = Ks2[j]
-            for i=1:n1
-                oi = orbs1[i]
-                Ji = Js1[i]
-                ki = Ks1[i]
-                Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
-            end
-        end
-    end
-    return Σ
-end
-
-function compute_sparse_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, minval)
-    n1 = length(orbs1)
-    n2 = length(orbs2)
-    N = Threads.nthreads()
-    Σs = [spzeros(n1,n2) for i=1:N]
-    Threads.@threads for id=1:N
-        @inbounds for j=id:N:n2
-            oj = orbs2[j]
-            Jj = Js2[j]
-            kj = Ks2[j]
-            for i=1:n1
-                oi = orbs1[i]
-                Ji = Js1[i]
-                ki = Ks1[i]
-                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
-                if s > minval
-                    Σs[id][i,j] = s
-                end
-            end
-        end
-    end
-    Σ = sum(Σs)
-    return Σ
-end
-
+#1-arg Threaded Covariance
 function compute_covariance_matrix(orbs, Js, Σ_inv, atol)
     n = length(orbs)
     N = Threads.nthreads()
@@ -478,35 +384,8 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol)
     return Σ
 end
 
-function compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool::AbstractWorkerPool)
-    n = length(orbs)
-    indices = [(i,j) for i=1:n, j=1:n if i >= j]
-
-    c = pmap(x -> get_covariance(orbs[x[1]],Js[x[1]],orbs[x[2]],Js[x[2]], Σ_inv, atol),
-             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
-
-    Σ = zeros(n,n)
-    for (ii,I) in enumerate(indices)
-        i,j = I
-        Σ[i,j] = c[ii]
-        Σ[j,i] = c[ii]
-    end
-
-    return Σ
-end
-
-function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool::AbstractWorkerPool)
-    n1 = length(orbs1)
-    n2 = length(orbs2)
-    indices = [(i,j) for i=1:n1, j=1:n2]
-
-    Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol),
-             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
-
-    return Σ
-end
-
-function compute_sparse_covariance_matrix(orbs, Js, Σ_inv, atol, minval)
+#1-arg Threaded Sparse Covariance
+function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval)
     n = length(orbs)
     N = Threads.nthreads()
     Σs = [spzeros(n,n) for i=1:N]
@@ -530,6 +409,92 @@ function compute_sparse_covariance_matrix(orbs, Js, Σ_inv, atol, minval)
     return Σ
 end
 
+#1-arg Distributed Covariance
+function compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool::AbstractWorkerPool)
+    n = length(orbs)
+    indices = [(i,j) for i=1:n, j=1:n if i >= j]
+
+    c = pmap(x -> get_covariance(orbs[x[1]],Js[x[1]],orbs[x[2]],Js[x[2]], Σ_inv, atol),
+             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
+
+    Σ = zeros(n,n)
+    for (ii,I) in enumerate(indices)
+        i,j = I
+        Σ[i,j] = c[ii]
+        Σ[j,i] = c[ii]
+    end
+
+    return Σ
+end
+
+#1-arg Distributed Sparse Covariance
+function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval, pool::AbstractWorkerPool)
+    Σ = compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool)
+    Σ[Σ .< minval] .= zero(eltype(Σ))
+    return sparse(Σ)
+end
+
+#1-arg Covariance
+function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
+                               Js::Vector{Vector{Float64}} = Vector{Float64}[],
+                               sparse::Bool = false, atol::Float64 = 1e-3,
+                               minval::Float64 = atol, distributed = false, kwargs...)
+    n = length(orbits)
+    ns = length.(orbits)
+    ts = [range(0.0, stop=1.0, length=nn) for nn in ns]
+    orbs = [OrbitSpline(o) for o in orbits]
+
+    if isempty(Js)
+        J = Array{Vector{Float64}}(undef, n)
+        @inbounds Threads.@threads for i=1:n
+            oi = orbits[i]::Orbit
+            Ji = get_jacobian(M, oi; kwargs...)
+            J[i] = Ji
+        end
+    else
+        J = Js
+    end
+    Jis = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J,ts)]
+
+    Σ_inv = S44(inv(Diagonal(sigma.^2)))
+
+    if distributed
+        pool = CachingPool(workers())
+        if sparse
+            Σ = compute_covariance_matrix(orbs, Jis, Σ_inv, atol, minval, pool)
+        else
+            Σ = compute_covariance_matrix(orbs, Jis, Σ_inv, atol, pool)
+        end
+        clear!(pool)
+        return Σ
+    else
+        if sparse
+            return compute_covariance_matrix(orbs, Jis, Σ_inv, atol, minval)
+        end
+        return compute_covariance_matrix(orbs, Jis, Σ_inv, atol)
+    end
+end
+
+#1-arg Correlation
+function get_correlation_matrix(cov)
+    nr,nc = size(cov)
+    nr != nc && error("Covariance matrix must be square")
+    K = sqrt.(diag(cov))
+    return cov./(K*K')
+end
+
+function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
+                                Js::Vector{Vector{Float64}} = Vector{Float64}[],
+                                sparse::Bool = false, atol::Float64 = 1e-3,
+                                minval::Float64 = atol, distributed = false, kwargs...)
+
+    Σ = get_covariance_matrix(M, orbits, sigma; Js=Js, sparse=sparse,
+                              atol=atol, minval=minval, distributed=distributed, kwargs...)
+
+    return get_correlation_matrix(Σ)
+end
+
+#2-arg Threaded Covariance
 function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol)
     n1 = length(orbs1)
     n2 = length(orbs2)
@@ -549,7 +514,8 @@ function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol)
     return Σ
 end
 
-function compute_sparse_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval)
+#2-arg Threaded Sparse Covariance
+function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval)
     n1 = length(orbs1)
     n2 = length(orbs2)
     N = Threads.nthreads()
@@ -572,47 +538,150 @@ function compute_sparse_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, 
     return Σ
 end
 
-function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
-                                ks::Vector{Float64} = Float64[],
-                                Js::Vector{Vector{Float64}} = Vector{Float64}[],
+#2-arg Distributed Covariance
+function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool::AbstractWorkerPool)
+    n1 = length(orbs1)
+    n2 = length(orbs2)
+    indices = [(i,j) for i=1:n1, j=1:n2]
+
+    Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol),
+             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
+
+    return Σ
+end
+
+#2-arg Distributed Sparse Covariance
+function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval, pool::AbstractWorkerPool)
+    Σ = compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool)
+    Σ[Σ .< minval] .= zero(eltype(Σ))
+    return sparse(Σ)
+end
+
+#2-arg Covariance
+function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::Vector;
+                                Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
+                                Js_2::Vector{Vector{Float64}} = Vector{Float64}[],
                                 sparse::Bool = false, atol::Float64 = 1e-3,
-                                minval::Float64 = atol, kwargs...)
-
-    n = length(orbits)
-    ns = length.(orbits)
-    ts = [range(0.0, stop=1.0, length=nn) for nn in ns]
-    orbs = [OrbitSpline(o) for o in orbits]
-
-    if isempty(Js)
-        J = Array{Vector{Float64}}(undef, n)
-        @inbounds Threads.@threads for i=1:n
-            oi = orbits[i]::Orbit
-            Ji = get_jacobian(M, oi; kwargs...)
-            J[i] = Ji
-        end
-    else
-        J = Js
-    end
-    Jis = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J,ts)]
+                                minval::Float64 = atol, distributed=false, kwargs...)
 
     Σ_inv = S44(inv(Diagonal(sigma.^2)))
 
-    if isempty(ks)
-        K = zeros(n)
-        @inbounds Threads.@threads for i=1:n
-            oi = orbs[i]
-            Ji = Jis[i]
-            K[i] = get_covariance(oi, Ji, oi, Ji, Σ_inv, atol)
+    n1 = length(orbits_1)
+    ns1 = length.(orbits_1)
+    ts1 = [range(0.0, stop=1.0, length=nn) for nn in ns1]
+    orbs1 = [OrbitSpline(o) for o in orbits_1]
+
+    if isempty(Js_1)
+        J1 = Array{Vector{Float64}}(undef, n1)
+        @inbounds Threads.@threads for i=1:n1
+            oi = orbits_1[i]::Orbit
+            Ji = get_jacobian(M, oi; kwargs...)
+            J1[i] = Ji
         end
     else
-        K = ks
+        J1 = Js_1
     end
+    Jis1 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J1,ts1)]
 
-    if sparse
-        return compute_sparse_correlation_matrix(orbs, Jis, K, Σ_inv, atol, minval)
+    n2 = length(orbits_2)
+    ns2 = length.(orbits_2)
+    ts2 = [range(0.0, stop=1.0, length=nn) for nn in ns2]
+    orbs2 = [OrbitSpline(o) for o in orbits_2]
+
+    if isempty(Js_2)
+        J2 = Array{Vector{Float64}}(undef, n2)
+        @inbounds Threads.@threads for i=1:n2
+            oi = orbits_2[i]::Orbit
+            Ji = get_jacobian(M, oi; kwargs...)
+            J2[i] = Ji
+        end
+    else
+        J2 = Js_2
     end
-    return compute_correlation_matrix(orbs, Jis, K, Σ_inv, atol)
+    Jis2 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J2,ts2)]
 
+    if distributed
+        pool = CachingPool(workers())
+        if sparse
+            Σ = compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol, minval, pool)
+        else
+            Σ = compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol, pool)
+        end
+        clear!(pool)
+        return Σ
+    else
+        if sparse
+            return compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol, minval)
+        end
+        return compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol)
+    end
+end
+
+#2-arg Threaded Correlation
+function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol)
+    n1 = length(orbs1)
+    n2 = length(orbs2)
+    Σ = zeros(n1,n2)
+    N = Threads.nthreads()
+    Threads.@threads for id=1:N
+        @inbounds for j=id:N:n2
+            oj = orbs2[j]
+            Jj = Js2[j]
+            kj = Ks2[j]
+            for i=1:n1
+                oi = orbs1[i]
+                Ji = Js1[i]
+                ki = Ks1[i]
+                Σ[i,j] = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
+            end
+        end
+    end
+    return Σ
+end
+
+#2-arg Threaded Sparse Correlation
+function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, minval)
+    n1 = length(orbs1)
+    n2 = length(orbs2)
+    N = Threads.nthreads()
+    Σs = [spzeros(n1,n2) for i=1:N]
+    Threads.@threads for id=1:N
+        @inbounds for j=id:N:n2
+            oj = orbs2[j]
+            Jj = Js2[j]
+            kj = Ks2[j]
+            for i=1:n1
+                oi = orbs1[i]
+                Ji = Js1[i]
+                ki = Ks1[i]
+                s = get_covariance(oi, Ji, oj, Jj, Σ_inv, atol)/sqrt(ki*kj)
+                if s > minval
+                    Σs[id][i,j] = s
+                end
+            end
+        end
+    end
+    Σ = sum(Σs)
+    return Σ
+end
+
+#2-arg Distributed Correlation
+function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, pool::AbstractWorkerPool)
+    n1 = length(orbs1)
+    n2 = length(orbs2)
+    indices = [(i,j) for i=1:n1, j=1:n2]
+
+    Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol)/sqrt(Ks1[x[1]]*Ks2[x[2]]),
+             pool, indices, on_error=x->0.0, batch_size=round(Int,length(indices)/(5*nprocs())))
+
+    return Σ
+end
+
+#2-arg Distributed Sparse Correlation
+function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, minval, pool::AbstractWorkerPool)
+    Σ = compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, pool)
+    Σ[Σ .< minval] .= zero(eltype(Σ))
+    return sparse(Σ)
 end
 
 function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::Vector;
@@ -621,7 +690,7 @@ function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, or
                                 ks_2::Vector{Float64} = Float64[],
                                 Js_2::Vector{Vector{Float64}} = Vector{Float64}[],
                                 sparse::Bool = false, atol::Float64 = 1e-3,
-                                minval::Float64 = atol, kwargs...)
+                                minval::Float64 = atol, distributed=false, kwargs...)
 
     Σ_inv = S44(inv(Diagonal(sigma.^2)))
 
@@ -681,93 +750,20 @@ function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, or
         K2 = ks_2
     end
 
-    if sparse
-        return compute_sparse_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol, minval)
-    end
-    return compute_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol)
-
-end
-
-function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
-                               Js::Vector{Vector{Float64}} = Vector{Float64}[],
-                               sparse::Bool = false, atol::Float64 = 1e-3,
-                               minval::Float64 = atol, kwargs...)
-    n = length(orbits)
-    ns = length.(orbits)
-    ts = [range(0.0, stop=1.0, length=nn) for nn in ns]
-    orbs = [OrbitSpline(o) for o in orbits]
-
-    if isempty(Js)
-        J = Array{Vector{Float64}}(undef, n)
-        @inbounds Threads.@threads for i=1:n
-            oi = orbits[i]::Orbit
-            Ji = get_jacobian(M, oi; kwargs...)
-            J[i] = Ji
+    if distributed
+        pool = CachingPool(workers())
+        if sparse
+            Σ = compute_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol, minval, pool)
+        else
+            Σ = compute_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol, pool)
         end
+        clear!(pool)
+        return Σ
     else
-        J = Js
-    end
-    Jis = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J,ts)]
-
-    Σ_inv = S44(inv(Diagonal(sigma.^2)))
-
-    if sparse
-        return compute_sparse_covariance_matrix(orbs, Jis, Σ_inv, atol, minval)
-    end
-    return compute_covariance_matrix(orbs, Jis, Σ_inv, atol)
-
-end
-
-function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::Vector;
-                                Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
-                                Js_2::Vector{Vector{Float64}} = Vector{Float64}[],
-                                sparse::Bool = false, atol::Float64 = 1e-3,
-                                minval::Float64 = atol, kwargs...)
-
-    Σ_inv = S44(inv(Diagonal(sigma.^2)))
-
-    n1 = length(orbits_1)
-    ns1 = length.(orbits_1)
-    ts1 = [range(0.0, stop=1.0, length=nn) for nn in ns1]
-    orbs1 = [OrbitSpline(o) for o in orbits_1]
-
-    if isempty(Js_1)
-        J1 = Array{Vector{Float64}}(undef, n1)
-        @inbounds Threads.@threads for i=1:n1
-            oi = orbits_1[i]::Orbit
-            Ji = get_jacobian(M, oi; kwargs...)
-            J1[i] = Ji
+        if sparse
+            return compute_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol, minval)
         end
-    else
-        J1 = Js_1
+        return compute_correlation_matrix(orbs1, Jis1, K1, orbs2, Jis2, K2, Σ_inv, atol)
     end
-    Jis1 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J1,ts1)]
 
-    n2 = length(orbits_2)
-    ns2 = length.(orbits_2)
-    ts2 = [range(0.0, stop=1.0, length=nn) for nn in ns2]
-    orbs2 = [OrbitSpline(o) for o in orbits_2]
-
-    if isempty(Js_2)
-        J2 = Array{Vector{Float64}}(undef, n2)
-        @inbounds Threads.@threads for i=1:n2
-            oi = orbits_2[i]::Orbit
-            Ji = get_jacobian(M, oi; kwargs...)
-            J2[i] = Ji
-        end
-    else
-        J2 = Js_2
-    end
-    Jis2 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J2,ts2)]
-
-    if sparse
-        return compute_sparse_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol, minval)
-    end
-    return compute_covariance_matrix(orbs1, Jis1, orbs2, Jis2, Σ_inv, atol)
-
-end
-
-function get_correlation_matrix(cov)
-    K = sqrt.(diag(cov))
-    return cov./(K*K')
 end
