@@ -14,3 +14,4 @@ StaticArrays
 NonNegLeastSquares
 Interpolations
 HCubature
+Optim
