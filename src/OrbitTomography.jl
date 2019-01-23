@@ -26,6 +26,7 @@ using HCubature
 using Interpolations
 using Distributed
 using Optim
+using BayesOpt
 import IterTools: nth
 
 const S3 = SVector{3}
