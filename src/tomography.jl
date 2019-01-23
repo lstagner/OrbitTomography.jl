@@ -42,7 +42,10 @@ function optimize_parameters(M::AxisymmetricEquilibrium, orbits::Vector, W::Matr
                              batch_size=10000, atol=1e-3, maxiter = 100, alg = NelderMead(), kwargs...)
 
     pool = CachingPool(workers())
-    Js = pmap(x->get_jacobian(M, x; kwargs...), pool, orbits, on_error=x->zeros(length(x)), batch_size=batch_size)
+    if batch_size == 0
+        bs = round(Int, length(orbits)/(5*nprocs()))
+    end
+    Js = pmap(x->get_jacobian(M, x; kwargs...), pool, orbits, on_error=x->zeros(length(x)), batch_size=bs)
 
     n = length(orbits)
     ns = length.(orbits)
