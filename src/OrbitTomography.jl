@@ -25,6 +25,7 @@ using NonNegLeastSquares
 using HCubature
 using Interpolations
 using Distributed
+using Optim
 import IterTools: nth
 
 const S3 = SVector{3}
@@ -59,6 +60,6 @@ include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight
 
 include("tomography.jl")
-export marginal_loglike, solve
+export marginal_loglike, optimize_parameters, solve
 
 end # module
