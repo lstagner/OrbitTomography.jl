@@ -79,6 +79,10 @@ function optimize_parameters(M::AxisymmetricEquilibrium, orbits::Vector, W::Matr
     set_kernel!(config, "kMaternARD5")  # calls set_kernel of the C API
     config.sc_type = SC_MAP
     config.n_iterations=maxiter
+    config.force_jump=1
+    config.n_init_samples = 20
+    config.init_method = 2
+    config.n_iter_relearn = 10
     lowerbound = [0.0, 0.0, 0.0]; upperbound = [1.0, 1.0, 1.0]
     x, op = bayes_optimization(x -> f(Σ, Σ_inv, orbs, Jis, atol, pool, batch_size, W, d, err, norm, mu, ntot,
                          [x[1]*(dE[2]-dE[1])+dE[1],
