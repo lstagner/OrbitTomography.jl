@@ -56,7 +56,7 @@ function optimize_parameters(M::AxisymmetricEquilibrium, orbits::Vector, W::Matr
     f = function lml(Σ, Σ_inv, orbs, Jis, atol, pool, batch_size, W, d, err, norm, mu, ntot, sigma)
         Σ_p_inv = S44(inv(Diagonal(sigma.^2)))
         Σ .= compute_covariance_matrix(orbs, Jis, Σ_p_inv, atol, pool; batch_size=batch_size)
-        Σ .= Σ + (1 + 1e-10)*abs(eigvals(Σ)[1])I #to make posdef
+        Σ .= Σ + (1 + 1e-8)*abs(eigvals(Σ)[1])I #to make posdef
         Σ_inv .= inv(Σ)
         op = optimize(x -> -marginal_loglike(W, d, err, (10^x)*Σ; Σ_X_inv = (10^(-x))*Σ_inv,
                                              norm=norm,mu=mu,ntot=ntot), -6,3, Brent())
