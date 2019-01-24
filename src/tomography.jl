@@ -76,7 +76,7 @@ function optimize_parameters(M::AxisymmetricEquilibrium, orbits::Vector, W::Matr
 
     #x = Optim.minimizer(op)
     config = ConfigParameters()         # calls initialize_parameters_to_default of the C API
-    set_kernel!(config, "kLinearARD")  # calls set_kernel of the C API
+    set_kernel!(config, "kMaternISO1")  # calls set_kernel of the C API
     config.sc_type = SC_MAP
     config.n_iterations=maxiter
     config.force_jump=1
