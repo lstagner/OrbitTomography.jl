@@ -87,11 +87,11 @@ function optimize_parameters(M::AxisymmetricEquilibrium, orbits::Vector, W::Matr
     config.n_iter_relearn = 10
     config.noise = 1e-12
     lowerbound = [0.0, 0.0, 0.0]; upperbound = [1.0, 1.0, 1.0]
-    x, op = bayes_optimization(x -> f(Σ, Σ_inv, orbs, Jis, atol, pool, batch_size, W, d, err, norm, mu, ntot,
+    x, op = bayes_optimization(x -> (f(Σ, Σ_inv, orbs, Jis, atol, pool, batch_size, W, d, err, norm, mu, ntot,
                          [x[1]*(dE[2]-dE[1])+dE[1],
                           x[2]*(dp[2]-dp[1])+dp[1],
                           x[3]*(dr[2]-dr[1])+dr[1],
-                          x[3]*(dr[2]-dr[1])+dr[1]]) - m, lowerbound, upperbound, config)
+                          x[3]*(dr[2]-dr[1])+dr[1]]) - m), lowerbound, upperbound, config)
 
     sigma = [x[1]*(dE[2]-dE[1])+dE[1],
              x[2]*(dp[2]-dp[1])+dp[1],
