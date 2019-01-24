@@ -67,6 +67,7 @@ function optimize_parameters(M::AxisymmetricEquilibrium, orbits::Vector, W::Matr
     Σ = zeros(n,n)
     Σ_inv = zeros(n,n)
     m = f(Σ,Σ_inv, orbs, Jis, atol, pool, batch_size, W, d, err, norm, mu,  ntot, [10.0,0.2,0.1,0.1])
+    println(m)
     #op = optimize(x -> f(Σ, Σ_inv, orbs, Jis, atol, pool, batch_size, W, d, err, norm, mu, ntot,
     #                     [x[1]*(dE[2]-dE[1])+dE[1],
     #                      x[2]*(dp[2]-dp[1])+dp[1],
