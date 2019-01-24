@@ -27,7 +27,7 @@ function marginal_loglike(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; Σ_X_
     l = 0.0
     try
         dhat = K*X
-        l = -nr*log(2pi) - logdet(Σ_d) - logabsdet(Σ_X)[1] - logabsdet(Σ_inv)[1] -
+        l = -logabsdet(Σ_X)[1] - logabsdet(Σ_inv)[1] -
             ((d .- dhat)'*Σ_d_inv*(d .- dhat))[1] - ((X .- mu_X)'*Σ_X_inv*(X .- mu_X))[1]
     catch er
         l = -Inf
