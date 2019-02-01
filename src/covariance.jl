@@ -549,7 +549,7 @@ end
 function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool::AbstractWorkerPool; batch_size=0)
     n1 = length(orbs1)
     n2 = length(orbs2)
-    indices = [(i,j) for i=1:n1, j=1:n2]
+    indices = vec([(i,j) for i=1:n1, j=1:n2])
 
     if batch_size == 0
         batch_size = round(Int, length(indices)/(5*nprocs()))
@@ -558,7 +558,7 @@ function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool::A
     Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol),
              pool, indices, on_error=x->0.0, batch_size=batch_size)
 
-    return Σ
+    return reshape(Σ,(n1,n2))
 end
 
 #2-arg Distributed Sparse Covariance
@@ -681,7 +681,7 @@ end
 function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, atol, pool::AbstractWorkerPool; batch_size=0)
     n1 = length(orbs1)
     n2 = length(orbs2)
-    indices = [(i,j) for i=1:n1, j=1:n2]
+    indices = vec([(i,j) for i=1:n1, j=1:n2])
 
     if batch_size == 0
         batch_size = round(Int, length(indices)/(5*nprocs()))
@@ -690,7 +690,7 @@ function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, at
     Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol)/sqrt(Ks1[x[1]]*Ks2[x[2]]),
              pool, indices, on_error=x->0.0, batch_size=batch_size)
 
-    return Σ
+    return reshape(Σ,(n1,n2))
 end
 
 #2-arg Distributed Sparse Correlation
