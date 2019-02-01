@@ -328,7 +328,7 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
             file["pitch","shuffle",(),"chunk",(npart),"compress",4] = vcat((M.sigma*o.path.pitch for o in oo)...)
             file["r","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.r for o in oo)...)
             file["z","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.z for o in oo)...)
-            file["class","shuffle",(),"chunk",(npart),"compress",4] = vcat((fill(Int16(i),length(o.path)) for (i,o) in enumerate(oo))...)
+            file["class","shuffle",(),"chunk",(npart),"compress",4] = vcat((fill(i,length(o.path)) for (i,o) in enumerate(oo))...)
             file["weight","shuffle",(),"chunk",(npart),"compress",4] = vcat((o.path.dt.*(ntot/sum(o.path.dt)) for o in oo)...)
 
             ## create datasets
