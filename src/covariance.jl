@@ -1,5 +1,77 @@
 # Orbit Space Covariance
 
+function get_global_covariance(c1::EPRCoordinate, ot1::Symbol,
+                               c2::EPRCoordinate, ot2::Symbol, p::Vector, norms::Vector)
+
+    x = S3(c1.energy, c1.pitch, c1.r)
+    y = S3(c2.energy, c2.pitch, c2.r)
+    mu = (x .- y)./norms
+
+    GO = Set((:trapped,:potato,:stagnation,:co_passing))
+    same_ot = ((ot1 in GO) && (ot2 in GO)) || (ot1 == ot2)
+
+    same_orb = c1 == c2
+
+    np = length(p)
+    if np == 2
+        k = same_ot*(p[1]^2)*exp(-0.5*dot(mu,mu)/(p[2]^2)) + same_orb*1e-6
+    elseif np == 3
+        k = same_ot*(p[1]^2)*exp(-0.5*dot(mu,mu)/(p[2]^2)) + same_orb*p[3]^2
+    elseif np == 4
+        Σ_rho_inv = Diagonal(p[2:4].^(-2))
+        k = same_ot*(p[1]^2)*exp(-0.5*dot(mu,Σ_rho_inv*mu)) + same_orb*1e-6
+    elseif np == 5
+        Σ_rho_inv = Diagonal(p[2:4].^(-2))
+        k = same_ot*(p[1]^2)*exp(-0.5*dot(mu,Σ_rho_inv*mu)) + same_orb*p[5]^2
+    else
+        error("Unsupported number of parameters")
+    end
+
+    return k
+end
+
+function get_global_covariance(o1::Orbit, o2::Orbit, p::Vector; norms=S3(1.0,1.0,1.0))
+    c1 = o1.coordinate
+    c2 = o2.coordinate
+    ot1 = o1.class
+    ot2 = o2.class
+    return get_global_covariance(c1,ot1,c2,ot2,p,norms)
+end
+
+function get_global_covariance_matrix(orbs, p::Vector; norms=S3(1.0,1.0,1.0))
+    n = length(orbs)
+    Σ = zeros(n,n)
+    for i=1:n
+        oi = orbs[i]
+        for j = i:n
+            oj = orbs[j]
+            k = get_global_covariance(oi.coordinate, oi.class,
+                                      oj.coordinate, oj.class,
+                                      p, norms)
+            Σ[i,j] = k
+            Σ[j,i] = k
+        end
+    end
+    return Σ
+end
+
+function get_global_covariance_matrix(orbs1::Vector, orbs2::Vector, p::Vector; norms=S3(1.0,1.0,1.0))
+    n1 = length(orbs1)
+    n2 = length(orbs2)
+    Σ = zeros(n1,n2)
+    for i=1:n1
+        oi = orbs1[i]
+        for j = 1:n2
+            oj = orbs2[j]
+            k = get_global_covariance(oi.coordinate, oi.class,
+                                      oj.coordinate, oj.class,
+                                      p, norms)
+            Σ[i,j] = k
+        end
+    end
+    return Σ
+end
+
 function epr_cov(energy, pitch, r, orbit_type, p; independent=false, norm = ones(3))
     norb = length(energy)
     np = length(p)
