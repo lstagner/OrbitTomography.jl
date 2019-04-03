@@ -1,7 +1,8 @@
 # Orbit Space Covariance
 
 function get_global_covariance(c1::EPRCoordinate, ot1::Symbol,
-                               c2::EPRCoordinate, ot2::Symbol, p::Vector, norms::Vector)
+                               c2::EPRCoordinate, ot2::Symbol,
+                               p::AbstractVector, norms::AbstractVector)
 
     x = S3(c1.energy, c1.pitch, c1.r)
     y = S3(c2.energy, c2.pitch, c2.r)

@@ -56,6 +56,7 @@ include("covariance.jl")
 export epr_cov
 export RepeatedBlockDiagonal, ep_cov, eprz_cov,transform_eprz_cov
 export get_covariance, get_correlation, get_correlation_matrix, get_covariance_matrix
+export get_global_covariance, get_global_covariance_matrix
 
 include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight
