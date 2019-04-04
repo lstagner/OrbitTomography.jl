@@ -137,6 +137,7 @@ function solve(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; mu=Float64[], no
             X .= vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X),alg=:fnnls))
         catch err
             @warn "Non-negative Least Squares failed. Using MAP estimate"
+            println(err)
             Σ_inv = Σ_X_inv .+ K'*Σ_d_inv*K
             X .= Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
         end
