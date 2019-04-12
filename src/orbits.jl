@@ -411,7 +411,7 @@ function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vect
 
     d = zeros(length(energy),length(pitch))
     detJ = zeros(length(energy),length(pitch))
-    @showprogress for i=1:nenergy, j=1:npitch
+    for i=1:nenergy, j=1:npitch
         for rr in r, zz in z
             v, dJ = eprz_to_eprt(M, energy[i], pitch[j], rr, zz; adaptive=false, kwargs...)
             dJ == 0 && continue
@@ -419,6 +419,9 @@ function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vect
                 idxs, dists = knn(tree,v[1:3],1,false)
                 ii,jj,kk = Tuple(inds[idxs[1]])
             else
+                !(grid.energy[1] <= v[1] <= grid.energy[end]) && continue
+                !(grid.pitch[1] <= v[2] <= grid.pitch[end]) && continue
+                !(grid.r[1] <= v[3] <= grid.r[end]) && continue
                 ii = argmin(abs.(v[1] .- grid.energy))
                 jj = argmin(abs.(v[2] .- grid.pitch))
                 kk = argmin(abs.(v[3] .- grid.r))
