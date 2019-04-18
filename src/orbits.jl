@@ -434,6 +434,33 @@ function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vect
     return LocalDistribution(d,detJ,energy,pitch)
 end
 
+function local_distribution(M::AxisymmetricEquilibrium, orbs, Σ, sigma, f, r, z;
+                            Js=Vector{Vector{Float64}}[], Σ_inv = inv(Σ),
+                            energy=range(1.0,80.0,length=25),
+                            pitch=range(-0.99,0.99,length=25),
+                            distributed=false, atol=1e-3, kwargs...)
+
+    nenergy = length(energy)
+    npitch = length(pitch)
+    lorbs = reshape([get_orbit(M, GCParticle(energy[i],pitch[j],r,z); kwargs...) for i=1:nenergy,j=1:npitch],nenergy*npitch)
+    if distributed
+        lJs = pmap(o->get_jacobian(M,o), lorbs, batch_size=round(Int, nenergy*npitch/(5*nprocs())))
+    else
+        lJs = [get_jacobian(M, o) for o in lorbs]
+    end
+
+    Si = get_covariance_matrix(M, lorbs, orbs, sigma, Js_1=lJs, Js_2=Js,
+                               distributed=distributed, atol=atol)
+    f_ep = reshape(max.(Si*Σ_inv*f,0.0),nenergy,npitch)
+    detJ = reshape([j[1] for j in lJs],nenergy,npitch)
+    f_ep .= f_ep./detJ
+    f_ep[detJ .== 0.0] .= 0.0
+    w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
+    f_ep[w] .= 0.0
+
+    return LocalDistribution(f_ep,1.0./detJ,energy,pitch)
+end
+
 struct OrbitSpline{T<:Function}
     n::Int
     itp::T
@@ -443,6 +470,7 @@ end
 @inline Base.length(os::OrbitSpline) = os.n
 
 function OrbitSpline(p::OrbitPath, t)
+    length(p) == 0 && return OrbitSpline(0, x -> S4(zeros(4)))
     eprz = hcat(p.energy,p.pitch,p.r,p.z)
     oi = scale(interpolate(eprz, (BSpline(Cubic(Periodic(OnGrid()))), NoInterp())), t, 1:4)
     return OrbitSpline(length(t), x -> S4(oi.(x,1:4)))

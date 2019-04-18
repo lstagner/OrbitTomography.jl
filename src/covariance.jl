@@ -322,6 +322,7 @@ end
 make_jacobian_spline(J::T, t) where T<:AbstractInterpolation = J
 
 function get_covariance(o1::OrbitSpline, J1::T, o2::OrbitSpline, J2::T, Σ_inv::S44, atol) where {T<:AbstractInterpolation}
+    (length(o1) == 0 || length(o2) == 0) && return 0.0
     K, kerr = hcubature(x -> J1(x[1])*J2(x[2])*eprz_kernel(o1(x[1]), o2(x[2]), Σ_inv),
                         (0.0,0.0), (1.0,1.0), atol=atol)
     return abs(K)
@@ -454,7 +455,7 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol)
             end
         end
     end
-    return Σ
+    return Σ + 1e-6I
 end
 
 #1-arg Threaded Sparse Covariance
@@ -479,7 +480,7 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval)
         end
     end
     Σ = sum(Σs)
-    return Σ
+    return Σ + 1e-6I
 end
 
 #1-arg Distributed Covariance
@@ -501,7 +502,7 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool::AbstractWorkerP
         Σ[j,i] = c[ii]
     end
 
-    return Σ
+    return Σ + 1e-6I
 end
 
 #1-arg Distributed Sparse Covariance
