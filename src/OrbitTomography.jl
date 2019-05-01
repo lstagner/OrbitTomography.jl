@@ -34,6 +34,19 @@ const S4 = SVector{4}
 const S33 = SMatrix{3,3}
 const S44 = SMatrix{4,4}
 
+const e0 = 1.60217733e-19 # Coulombs / Joules
+const mu0 = 4*pi*1e-7 # N/A^2
+const c0 = 2.99792458e8 # m/s
+
+const mass_u = 1.6605402e-27 # kg
+const e_amu = 5.48579909070e-4 # amu
+const H1_amu = 1.007276466879 # amu
+const H2_amu = 2.0141017778 # amu
+const H3_amu = 3.01550071632 # amu
+const He3_amu = 3.01602931914 # amu
+const B5_amu = 10.81 # amu
+const C6_amu = 12.011 # amu
+
 include("spectra.jl")
 export InstrumentalResponse, kernel
 export ExperimentalSpectra, TheoreticalSpectra
@@ -54,7 +67,7 @@ export OrbitSpline
 
 include("covariance.jl")
 export epr_cov
-export RepeatedBlockDiagonal, ep_cov, eprz_cov,transform_eprz_cov
+export RepeatedBlockDiagonal, ep_cov, eprz_cov,transform_eprz_cov, eprz_kernel
 export get_covariance, get_correlation, get_correlation_matrix, get_covariance_matrix
 export get_global_covariance, get_global_covariance_matrix
 

@@ -14,7 +14,7 @@ function Base.show(io::IO, og::OrbitGrid)
 end
 
 function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
-                    kwargs...)
+                    q = 1, amu = H2_amu, kwargs...)
 
     nenergy = length(eo)
     npitch = length(po)
@@ -37,11 +37,11 @@ function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::Abstract
         @async begin
             orbs = @distributed (vcat) for i=1:norbs
                 ie,ip,ir = Tuple(subs[i])
-                c = EPRCoordinate(M,eo[ie],po[ip],ro[ir])
+                c = EPRCoordinate(M,eo[ie],po[ip],ro[ir],q=q,amu=amu)
                 try
                     o = get_orbit(M, c; kwargs...)
                 catch
-                    o = Orbit(EPRCoordinate(),:incomplete)
+                    o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
                 end
 
                 if o.class in (:incomplete,:degenerate,:lost)
@@ -119,7 +119,7 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
         if nk == 1
             if !combine
                 c = coords .* norm .+ mins
-                cc = EPRCoordinate(M,mean(c,dims=2)...)
+                cc = EPRCoordinate(M,mean(c,dims=2)...;q = q, amu=amu)
                 try
                     o = get_orbit(M, GCParticle(cc.energy,cc.pitch,cc.r,cc.z,cc.m,cc.q); kwargs...)
                     push!(orbs,o)
@@ -145,7 +145,7 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
             for i=1:size(coords,2)
                 w = k.assignments .== i
                 sum(w) == 0 && continue
-                cc = EPRCoordinate(M,coords[1,i],coords[2,i],coords[3,i])
+                cc = EPRCoordinate(M,coords[1,i],coords[2,i],coords[3,i], q=q, amu=amu)
                 try
                     o = get_orbit(M, GCParticle(cc.energy,cc.pitch,cc.r,cc.z,cc.m,cc.q); kwargs...)
                     push!(orbs,o)
@@ -438,7 +438,8 @@ function local_distribution(M::AxisymmetricEquilibrium, orbs, Σ, sigma, f, r, z
                             Js=Vector{Vector{Float64}}[], Σ_inv = inv(Σ),
                             energy=range(1.0,80.0,length=25),
                             pitch=range(-0.99,0.99,length=25),
-                            distributed=false, atol=1e-3, kwargs...)
+                            distributed=false, atol=1e-3,
+                            covariance=:local, norms=S3(1.0,1.0,1.0), kwargs...)
 
     nenergy = length(energy)
     npitch = length(pitch)
@@ -449,8 +450,13 @@ function local_distribution(M::AxisymmetricEquilibrium, orbs, Σ, sigma, f, r, z
         lJs = [get_jacobian(M, o) for o in lorbs]
     end
 
-    Si = get_covariance_matrix(M, lorbs, orbs, sigma, Js_1=lJs, Js_2=Js,
-                               distributed=distributed, atol=atol)
+    if covariance == :local
+        Si = get_covariance_matrix(M, lorbs, orbs, sigma, Js_1=lJs, Js_2=Js,
+                                   distributed=distributed, atol=atol)
+    else
+        Si = get_global_covariance_matrix(lorbs, orbs, sigma, norms=norms)
+    end
+
     f_ep = reshape(max.(Si*Σ_inv*f,0.0),nenergy,npitch)
     detJ = reshape([j[1] for j in lJs],nenergy,npitch)
     f_ep .= f_ep./detJ
