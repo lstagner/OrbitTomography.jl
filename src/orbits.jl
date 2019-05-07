@@ -71,7 +71,8 @@ function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::Abstract
 end
 
 function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, orbits::Vector;
-                        norbits=1000, combine=(length(orbits[1].path) != 0), kwargs...)
+                        norbits=1000, combine=(length(orbits[1].path) != 0),
+                        q = 1, amu = H2_amu, kwargs...)
 
     eo = orbit_grid.energy
     po = orbit_grid.pitch
