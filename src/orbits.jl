@@ -436,7 +436,8 @@ function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vect
 end
 
 function local_distribution(M::AxisymmetricEquilibrium, orbs, Σ, sigma, f, r, z;
-                            Js=Vector{Vector{Float64}}[], Σ_inv = inv(Σ),
+                            Js=Vector{Vector{Float64}}[], rtol=0.0,
+                            Σ_inv = (rtol == 0.0 ? inv(Σ) : pinv(Σ,rtol=rtol)),
                             energy=range(1.0,80.0,length=25),
                             pitch=range(-0.99,0.99,length=25),
                             distributed=false, atol=1e-3,
@@ -446,7 +447,8 @@ function local_distribution(M::AxisymmetricEquilibrium, orbs, Σ, sigma, f, r, z
     npitch = length(pitch)
     lorbs = reshape([get_orbit(M, GCParticle(energy[i],pitch[j],r,z); kwargs...) for i=1:nenergy,j=1:npitch],nenergy*npitch)
     if distributed
-        lJs = pmap(o->get_jacobian(M,o), lorbs, batch_size=round(Int, nenergy*npitch/(5*nprocs())))
+        lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = o->zeros(length(o)),
+                   batch_size=round(Int, nenergy*npitch/(5*nprocs())))
     else
         lJs = [get_jacobian(M, o) for o in lorbs]
     end

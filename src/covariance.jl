@@ -455,7 +455,8 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol)
             end
         end
     end
-    return Σ + 1e-6I
+
+    return Σ
 end
 
 #1-arg Threaded Sparse Covariance
@@ -480,7 +481,8 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval)
         end
     end
     Σ = sum(Σs)
-    return Σ + 1e-6I
+
+    return Σ
 end
 
 #1-arg Distributed Covariance
@@ -502,13 +504,14 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool::AbstractWorkerP
         Σ[j,i] = c[ii]
     end
 
-    return Σ + 1e-6I
+    return Σ
 end
 
 #1-arg Distributed Sparse Covariance
 function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval, pool::AbstractWorkerPool; batch_size=0)
     Σ = compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool, batch_size=batch_size)
     Σ[Σ .< minval] .= zero(eltype(Σ))
+
     return sparse(Σ)
 end
 
