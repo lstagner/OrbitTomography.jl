@@ -1,35 +1,34 @@
-function marginal_loglike(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; scale=1.0, rtol = 0.0,
-                          Σ_X_inv = (rtol == 0.0 ? inv(Σ_X) : pinv(Σ_X, rtol=rtol)),
-                          mu=Float64[], norm=1e18/size(W,2), ntot=())
+mutable struct OrbitSystem{T}
+    # sum(((W*f .- d)./err).^2) + (f .- mu)'*inv(alpha*S)*(f .- mu)
+    W::Matrix{T}
+    d::Vector{T}
+    err::Vector{T}
+    S::Matrix{T}
+    mu::Vector{T}
+    alpha::T
+end
 
-    nr,nc = size(W)
-    if length(mu) == 0
-        mu_X = zeros(nc)
-    else
-        mu_X = mu/norm
-    end
+function OrbitSystem(W, d, err, S; mu = zeros(size(W,2)), alpha=1.0)
+    OrbitSystem(W,d,err,S,mu,alpha)
+end
 
-    if !isempty(ntot)
-        W = vcat(W,ones(nc)')
-        d = vcat(d,ntot[1])
-        err = vcat(err, ntot[2]*ntot[1])
-    end
+function marginal_loglike(OS::OrbitSystem; rtol = 0.0, norm=1e18/size(OS.W,2))
 
-    Σ_d = Diagonal(err.^2)
+    d = OS.d
+    Σ_d = Diagonal(OS.err.^2)
     Σ_d_inv = inv(Σ_d)
 
-    K = norm*W
+    K = norm*OS.W
+
+    mu_X = OS.mu/norm
 
     # Scale covariance matrices
-    Σ_X *= scale
-    Σ_X_inv *= inv(scale)
+    Σ_X = OS.alpha*OS.S
+    Σ_X_inv = inv(OS.alpha)*pinv(OS.S,rtol=rtol)
 
     Σ_inv = Σ_X_inv .+ K'*Σ_d_inv*K
-    if length(mu) == 0
-        X = Σ_inv \ (K'*(Σ_d_inv*d))
-    else
-        X = Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
-    end
+    X = Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
+
     l = 0.0
     try
         dhat = K*X
@@ -42,6 +41,93 @@ function marginal_loglike(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; scale
     return l
 end
 
+function optimize_alpha!(OS; log_bounds = (-6,6), kwargs...)
+    f = x -> begin
+        OS.alpha = 10.0^x
+        try
+            return -marginal_loglike(OS; kwargs...)
+        catch
+            return Inf
+        end
+    end
+
+    op = optimize(f, log_bounds[1], log_bounds[2], Brent())
+
+    OS.alpha = 10.0^Optim.minimizer(op)
+
+    return Optim.minimum(op)
+end
+
+function optimize_parameters(make_orbit_system::Function, lbounds, ubounds;
+                             niter=10, nseed = 15, warmstart=false, checkpoint=true,
+                             file="optim_progress.jld2",verbose=true, kwargs...)
+
+    s = Sobol.SobolSeq(lbounds,ubounds)
+    points = Vector{Float64}[]
+    values = Float64[]
+
+    if warmstart && isfile(file) && (filesize(file) != 0)
+        s, points, values = load(file, "s", "points", "values")
+    end
+
+    if checkpoint
+        touch(file)
+    end
+
+    while s.s.n < nseed
+        p = Sobol.next!(s)
+        OS = make_orbit_system(p)
+        v = optimize_alpha!(OS; kwargs...)
+        push!(points, p)
+        push!(values, v)
+        if checkpoint
+            @save file s points values
+        end
+        if verbose
+            println("Seed Number: $(s.s.n)")
+            println("Seed Point:  ", repr(p))
+            println("Seed Value:  ", v)
+            println("Best Seed: ", repr(points[argmin(values)]))
+            println("")
+        end
+    end
+
+    for i=1:niter
+        spl = PolyharmonicSpline(2, Array(hcat(points...)'), values)
+        xstart = s.lb .+ s.ub.*rand(length(s.ub))
+        op = optimize(x -> spl(x...)[1], s.lb, s.ub, xstart, Fminbox(NelderMead()))
+        p = Optim.minimizer(op)
+        pv = Optim.minimum(op)
+        if p in points
+            p = Sobol.next!(s)
+            pv = spl(p...)[1]
+        end
+        if verbose
+            println("Iteration: $i")
+            println("Guess Point:  ",repr(p))
+            println("Guess Value:  ", pv)
+        end
+        OS = make_orbit_system(p)
+        v = optimize_alpha!(OS; kwargs...)
+        if isfinite(v)
+            push!(points, p)
+            push!(values, v)
+        end
+        if verbose
+            println("Actual Value: ", v)
+            println("Best Point: ", repr(points[argmin(values)]))
+            println("")
+        end
+        if checkpoint
+            @save file s points values
+        end
+    end
+
+    #OS = make_orbit_system(points[argmin(values)])
+    #optimize_alpha!(OS)
+    return points[argmin(values)]#, OS
+end
+
 function inv_chol(Σ; rtol=0.0)
     if rtol == 0.0
         Σ_inv = inv(Σ)
@@ -50,63 +136,41 @@ function inv_chol(Σ; rtol=0.0)
         S = svd(Σ)
         smax = maximum(S.S)
         svals_inv = Diagonal([s >= smax*rtol ? 1/s : 0.0 for s in S.S])
-        Σ_inv = S.V*svals_inv*S.U'
-        Γ = sqrt.(svals_inv)*S.V'
+        Σ_inv = (svals_inv*S.Vt)' * S.U'
+        Γ = sqrt.(svals_inv)*S.Vt
     end
     return Σ_inv, Γ
 end
 
-function solve(W::Matrix, d::Vector, err::Vector, Σ_X::Matrix; rtol = 0.0,
-               mu=Float64[], norm=1e18/size(W,2), ntot=(), nonneg=true, scale=1.0)
+function solve(OS::OrbitSystem; rtol = 0.0, norm=1e18/size(W,2), nonneg=true)
 
-    nr,nc = size(W)
-    if length(mu) == 0
-        mu_X = zeros(nc)
-    else
-        mu_X = mu/norm
-    end
-
-    if !isempty(ntot)
-        W = vcat(W,ones(nc)')
-        d = vcat(d,ntot[1])
-        err = vcat(err, ntot[2]*ntot[1])
-    end
-
-    Σ_d = Diagonal(err.^2)
+    d = OS.d
+    Σ_d = Diagonal(OS.err.^2)
     Σ_d_inv = inv(Σ_d)
 
-    K = norm*W
+    K = norm*OS.W
 
-    X = zeros(nc)
-    Σ_X_inv, Γ = inv_chol(Σ_X; rtol=rtol)
+    mu_X = OS.mu/norm
 
     # Scale covariance matrices
-    Σ_X *= scale
-    Σ_X_inv *= inv(scale)
-    Γ *= sqrt(inv(scale))
+    Σ_X_inv, Γ = inv_chol(OS.S; rtol=rtol)
+    Σ_X = OS.alpha*OS.S
+    Σ_X_inv *= inv(OS.alpha)
+    Γ *= sqrt(OS.alpha)
 
     if nonneg
         try
-            X .= vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X),alg=:fnnls))
+            X .= vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X), alg=:fnnls))
         catch err
             @warn "Non-negative Least Squares failed. Using MAP estimate"
             println(err)
             Σ_inv = Σ_X_inv .+ K'*Σ_d_inv*K
-            if length(mu) == 0
-                X .= Σ_inv \ (K'*(Σ_d_inv*d))
-            else
-                X .= Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
-            end
+            X .= Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
         end
     else
         Σ_inv = Σ_X_inv .+ K'*Σ_d_inv*K
-        if length(mu) == 0
-            X .= Σ_inv \ (K'*(Σ_d_inv*d))
-        else
-            X .= Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
-        end
+        X .= Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
     end
 
     return norm*X
-
 end

@@ -13,6 +13,7 @@ using EFIT
 using Equilibrium
 using GuidingCenterOrbits
 using HDF5
+using JLD2, FileIO
 using Clustering
 using Images
 using StatsBase
@@ -26,7 +27,7 @@ using HCubature
 using Interpolations
 using Distributed
 using Optim
-using BayesOpt
+using Sobol
 import IterTools: nth
 
 const S3 = SVector{3}
@@ -46,6 +47,9 @@ const H3_amu = 3.01550071632 # amu
 const He3_amu = 3.01602931914 # amu
 const B5_amu = 10.81 # amu
 const C6_amu = 12.011 # amu
+
+include("polyharmonic.jl")
+export PolyharmonicSpline
 
 include("spectra.jl")
 export InstrumentalResponse, kernel
@@ -75,6 +79,6 @@ include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight
 
 include("tomography.jl")
-export marginal_loglike, optimize_parameters, solve
+export OrbitSystem, marginal_loglike, optimize_alpha!, optimize_parameters, solve
 
 end # module

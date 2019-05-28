@@ -3,6 +3,8 @@ EFIT
 Equilibrium
 GuidingCenterOrbits
 HDF5
+JLD2
+FileIO
 Images
 Clustering
 StatsBase
@@ -15,4 +17,4 @@ NonNegLeastSquares
 Interpolations
 HCubature
 Optim
-BayesOpt
+Sobol

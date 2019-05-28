@@ -495,7 +495,7 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol, pool::AbstractWorkerP
     end
 
     c = pmap(x -> get_covariance(orbs[x[1]],Js[x[1]],orbs[x[2]],Js[x[2]], Σ_inv, atol),
-             pool, indices, on_error=x->0.0, batch_size=batch_size)
+             pool, indices, on_error=x->0.0, retry_delays=zeros(3), batch_size=batch_size)
 
     Σ = zeros(n,n)
     for (ii,I) in enumerate(indices)
@@ -633,7 +633,7 @@ function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, pool::A
     end
 
     Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol),
-             pool, indices, on_error=x->0.0, batch_size=batch_size)
+             pool, indices, on_error=x->0.0, retry_delays=zeros(3), batch_size=batch_size)
 
     return reshape(Σ,(n1,n2))
 end
@@ -765,7 +765,7 @@ function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, at
     end
 
     Σ = pmap(x -> get_covariance(orbs1[x[1]],Js1[x[1]],orbs2[x[2]],Js2[x[2]], Σ_inv, atol)/sqrt(Ks1[x[1]]*Ks2[x[2]]),
-             pool, indices, on_error=x->0.0, batch_size=batch_size)
+             pool, indices, on_error=x->0.0, retry_delays=zeros(3), batch_size=batch_size)
 
     return reshape(Σ,(n1,n2))
 end
