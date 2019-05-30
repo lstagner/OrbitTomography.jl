@@ -4,15 +4,17 @@ mutable struct OrbitSystem{T}
     d::Vector{T}
     err::Vector{T}
     S::Matrix{T}
+    S_inv::Matrix{T}
+    T::Matrix{T}
     mu::Vector{T}
     alpha::T
 end
 
-function OrbitSystem(W, d, err, S; mu = zeros(size(W,2)), alpha=1.0)
-    OrbitSystem(W,d,err,S,mu,alpha)
+function OrbitSystem(W, d, err, S; S_inv = inv(S), T=diagm(0=>ones(size(W,2))), mu = zeros(size(W,2)), alpha=1.0)
+    OrbitSystem(W,d,err,S,S_inv,T,mu,alpha)
 end
 
-function marginal_loglike(OS::OrbitSystem; rtol = 0.0, norm=1e18/size(OS.W,2))
+function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2))
 
     d = OS.d
     Σ_d = Diagonal(OS.err.^2)
@@ -24,7 +26,7 @@ function marginal_loglike(OS::OrbitSystem; rtol = 0.0, norm=1e18/size(OS.W,2))
 
     # Scale covariance matrices
     Σ_X = OS.alpha*OS.S
-    Σ_X_inv = inv(OS.alpha)*pinv(OS.S,rtol=rtol)
+    Σ_X_inv = inv(OS.alpha)*OS.S_inv
 
     Σ_inv = Σ_X_inv .+ K'*Σ_d_inv*K
     X = Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
@@ -44,11 +46,7 @@ end
 function optimize_alpha!(OS; log_bounds = (-6,6), kwargs...)
     f = x -> begin
         OS.alpha = 10.0^x
-        try
-            return -marginal_loglike(OS; kwargs...)
-        catch
-            return Inf
-        end
+        return -marginal_loglike(OS; kwargs...)
     end
 
     op = optimize(f, log_bounds[1], log_bounds[2], Brent())
@@ -56,6 +54,17 @@ function optimize_alpha!(OS; log_bounds = (-6,6), kwargs...)
     OS.alpha = 10.0^Optim.minimizer(op)
 
     return Optim.minimum(op)
+end
+
+function estimate_rtol(S)
+    s = filter(x -> x > 0, eigvals(S))
+    sn = log10.(reverse(s)/s[end])
+    n = length(sn)
+    x = collect(range(0,1,length=n))
+    f = PolyharmonicSpline(3,x,sn,s=0.1)
+    df2 = ForwardDiff.derivative(xx->ForwardDiff.derivative(f,xx),x)
+    roots = find_zeros(df2,0.2,0.8)
+    return f(roots[1])
 end
 
 function optimize_parameters(make_orbit_system::Function, lbounds, ubounds;
@@ -95,12 +104,12 @@ function optimize_parameters(make_orbit_system::Function, lbounds, ubounds;
     for i=1:niter
         spl = PolyharmonicSpline(2, Array(hcat(points...)'), values)
         xstart = s.lb .+ s.ub.*rand(length(s.ub))
-        op = optimize(x -> spl(x...)[1], s.lb, s.ub, xstart, Fminbox(NelderMead()))
+        op = optimize(x -> spl(x...), s.lb, s.ub, xstart, Fminbox(NelderMead()))
         p = Optim.minimizer(op)
         pv = Optim.minimum(op)
         if p in points
             p = Sobol.next!(s)
-            pv = spl(p...)[1]
+            pv = spl(p...)
         end
         if verbose
             println("Iteration: $i")
@@ -142,10 +151,11 @@ function inv_chol(Σ; rtol=0.0)
     return Σ_inv, Γ
 end
 
-function solve(OS::OrbitSystem; rtol = 0.0, norm=1e18/size(W,2), nonneg=true)
+function solve(OS::OrbitSystem; rtol = 0.0, norm=1e18/size(OS.W,2), nonneg=true)
 
     d = OS.d
-    Σ_d = Diagonal(OS.err.^2)
+    err = OS.err
+    Σ_d = Diagonal(err.^2)
     Σ_d_inv = inv(Σ_d)
 
     K = norm*OS.W
@@ -160,16 +170,16 @@ function solve(OS::OrbitSystem; rtol = 0.0, norm=1e18/size(W,2), nonneg=true)
 
     if nonneg
         try
-            X .= vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X), alg=:fnnls))
+            X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X), alg=:fnnls))
         catch err
             @warn "Non-negative Least Squares failed. Using MAP estimate"
             println(err)
             Σ_inv = Σ_X_inv .+ K'*Σ_d_inv*K
-            X .= Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
+            X = Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
         end
     else
         Σ_inv = Σ_X_inv .+ K'*Σ_d_inv*K
-        X .= Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
+        X = Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
     end
 
     return norm*X

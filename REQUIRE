@@ -18,3 +18,5 @@ Interpolations
 HCubature
 Optim
 Sobol
+ForwardDiff
+Roots

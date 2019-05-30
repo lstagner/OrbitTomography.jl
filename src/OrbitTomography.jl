@@ -28,6 +28,8 @@ using Interpolations
 using Distributed
 using Optim
 using Sobol
+using ForwardDiff
+using Roots
 import IterTools: nth
 
 const S3 = SVector{3}
@@ -79,6 +81,6 @@ include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight
 
 include("tomography.jl")
-export OrbitSystem, marginal_loglike, optimize_alpha!, optimize_parameters, solve
+export OrbitSystem, marginal_loglike, optimize_alpha!, estimate_rtol, optimize_parameters, solve
 
 end # module
