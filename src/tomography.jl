@@ -62,7 +62,7 @@ function estimate_rtol(S)
     n = length(sn)
     x = collect(range(0,1,length=n))
     f = PolyharmonicSpline(3,x,sn,s=0.1)
-    df2 = ForwardDiff.derivative(xx->ForwardDiff.derivative(f,xx),x)
+    df2(t) = ForwardDiff.derivative(tt->ForwardDiff.derivative(f,tt),t)
     roots = find_zeros(df2,0.2,0.8)
     return f(roots[1])
 end
