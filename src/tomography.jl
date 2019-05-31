@@ -64,7 +64,7 @@ function estimate_rtol(S)
     f = PolyharmonicSpline(3,x,sn,s=0.1)
     df2(t) = ForwardDiff.derivative(tt->ForwardDiff.derivative(f,tt),t)
     roots = find_zeros(df2,0.2,0.8)
-    return f(roots[1])
+    return 10.0^(f(roots[1]))
 end
 
 function optimize_parameters(make_orbit_system::Function, lbounds, ubounds;
