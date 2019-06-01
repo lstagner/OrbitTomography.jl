@@ -5,13 +5,16 @@ mutable struct OrbitSystem{T}
     err::Vector{T}
     S::Matrix{T}
     S_inv::Matrix{T}
+    G::Matrix{T}
     T::Matrix{T}
     mu::Vector{T}
     alpha::T
 end
 
-function OrbitSystem(W, d, err, S; S_inv = inv(S), T=diagm(0=>ones(size(W,2))), mu = zeros(size(W,2)), alpha=1.0)
-    OrbitSystem(W,d,err,S,S_inv,T,mu,alpha)
+function OrbitSystem(W, d, err, S; S_inv = inv(S), G = Array(chol(Hermitian(S_inv)).U),
+                     T=diagm(0=>ones(size(W,2))), mu = zeros(size(W,2)), alpha=1.0)
+
+    OrbitSystem(W,d,err,S,S_inv,G,T,mu,alpha)
 end
 
 function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2))
@@ -151,7 +154,7 @@ function inv_chol(Σ; rtol=0.0)
     return Σ_inv, Γ
 end
 
-function solve(OS::OrbitSystem; rtol = 0.0, norm=1e18/size(OS.W,2), nonneg=true)
+function solve(OS::OrbitSystem; norm=1e18/size(OS.W,2), nonneg=true)
 
     d = OS.d
     err = OS.err
@@ -163,10 +166,9 @@ function solve(OS::OrbitSystem; rtol = 0.0, norm=1e18/size(OS.W,2), nonneg=true)
     mu_X = OS.mu/norm
 
     # Scale covariance matrices
-    Σ_X_inv, Γ = inv_chol(OS.S; rtol=rtol)
     Σ_X = OS.alpha*OS.S
-    Σ_X_inv *= inv(OS.alpha)
-    Γ *= sqrt(OS.alpha)
+    Σ_X_inv = inv(OS.alpha)*OS.S_inv
+    Γ = sqrt(inv(OS.alpha))*OS.G
 
     if nonneg
         try
