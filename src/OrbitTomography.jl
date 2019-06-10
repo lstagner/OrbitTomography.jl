@@ -67,7 +67,7 @@ export merge_spectra_geometry
 
 include("orbits.jl")
 export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
-export write_orbit_grid, read_orbit_grid, LocalDistribution, local_distribution
+export write_orbit_grid, read_orbit_grid
 export orbit_index, orbit_matrix
 export OrbitSpline
 
@@ -82,5 +82,8 @@ export AbstractWeight, FIDAOrbitWeight
 
 include("tomography.jl")
 export OrbitSystem, marginal_loglike, optimize_alpha!, estimate_rtol, optimize_parameters, inv_chol, solve
+
+include("transforms.jl")
+export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution
 
 end # module

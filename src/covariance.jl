@@ -309,13 +309,18 @@ function eprz_cov(energy, pitch, r, z, p::Vector)
 end
 
 function eprz_kernel(x,y,Σ_inv)
-    d = x .- y
+    d = S4(x[1] - y[1], (acos(x[2]) - acos(y[2]))/(2pi), x[3]-y[3],x[4]-y[4])
+    #d = x .- y
     l = d'*Σ_inv*d
     return exp(-0.5*l)
 end
 
 function make_jacobian_spline(J::Vector{T}, t) where T<:Number
-    Js = scale(interpolate(J, BSpline(Cubic(Periodic(OnGrid())))), t)
+    if length(t) == 0
+        Js = scale(interpolate(zeros(2),BSpline(Cubic(Periodic(OnGrid())))),range(0.0,1.0,length=2))
+    else
+        Js = scale(interpolate(J, BSpline(Cubic(Periodic(OnGrid())))), t)
+    end
     return Js
 end
 
