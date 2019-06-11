@@ -17,10 +17,11 @@ function OrbitSystem(W, d, err, S; S_inv = inv(S), G = Array(chol(Hermitian(S_in
     OrbitSystem(W,d,err,S,S_inv,G,T,mu,alpha)
 end
 
-function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2))
+function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2),nonneg=false)
 
     d = OS.d
-    Σ_d = Diagonal(OS.err.^2)
+    err = OS.err
+    Σ_d = Diagonal(err.^2)
     Σ_d_inv = inv(Σ_d)
 
     K = norm*OS.W
@@ -32,7 +33,13 @@ function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2))
     Σ_X_inv = inv(OS.alpha)*OS.S_inv
 
     Σ_inv = Σ_X_inv .+ K'*Σ_d_inv*K
-    X = Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
+
+    if nonneg
+        Γ = sqrt(inv(OS.alpha))*OS.G
+        X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X), alg=:fnnls))
+    else
+        X = Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
+    end
 
     l = 0.0
     try
