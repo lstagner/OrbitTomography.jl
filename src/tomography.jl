@@ -11,7 +11,7 @@ mutable struct OrbitSystem{T}
     alpha::T
 end
 
-function OrbitSystem(W, d, err, S; S_inv = inv(S), G = Array(chol(Hermitian(S_inv)).U),
+function OrbitSystem(W, d, err, S; S_inv = inv(S), G = Array(cholesky(Hermitian(S_inv)).U),
                      T=diagm(0=>ones(size(W,2))), mu = zeros(size(W,2)), alpha=1.0)
 
     OrbitSystem(W,d,err,S,S_inv,G,T,mu,alpha)
