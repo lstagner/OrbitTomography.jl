@@ -78,7 +78,8 @@ function estimate_rtol(S)
 end
 
 function optimize_parameters(make_orbit_system::Function, lbounds, ubounds;
-                             niter=10, nseed = 15, warmstart=false, checkpoint=true,
+                             niter=10, nseed = 15, objective::Function = optimize_alpha!,
+                             warmstart=false, checkpoint=true,
                              file="optim_progress.jld2",verbose=true, kwargs...)
 
     s = Sobol.SobolSeq(lbounds,ubounds)
@@ -96,7 +97,7 @@ function optimize_parameters(make_orbit_system::Function, lbounds, ubounds;
     while s.s.n < nseed
         p = Sobol.next!(s)
         OS = make_orbit_system(p)
-        v = optimize_alpha!(OS; kwargs...)
+        v = objective(OS; kwargs...)
         push!(points, p)
         push!(values, v)
         if checkpoint
@@ -127,7 +128,7 @@ function optimize_parameters(make_orbit_system::Function, lbounds, ubounds;
             println("Guess Value:  ", pv)
         end
         OS = make_orbit_system(p)
-        v = optimize_alpha!(OS; kwargs...)
+        v = objective(OS; kwargs...)
         if isfinite(v)
             push!(points, p)
             push!(values, v)
@@ -142,9 +143,7 @@ function optimize_parameters(make_orbit_system::Function, lbounds, ubounds;
         end
     end
 
-    #OS = make_orbit_system(points[argmin(values)])
-    #optimize_alpha!(OS)
-    return points[argmin(values)]#, OS
+    return points[argmin(values)]
 end
 
 function inv_chol(Σ; rtol=0.0)
