@@ -50,7 +50,9 @@ function local_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f, orbs
 
     nenergy = length(energy)
     npitch = length(pitch)
-    lorbs = reshape([get_orbit(M, GCParticle(energy[i],pitch[j],r,z); kwargs...) for i=1:nenergy,j=1:npitch],nenergy*npitch)
+    m = orbs[1].coordinate.m
+    q = orbs[1].coordinate.q
+    lorbs = reshape([get_orbit(M, GCParticle(energy[i],pitch[j],r,z,m,q); kwargs...) for i=1:nenergy,j=1:npitch],nenergy*npitch)
     if distributed
         lJs = pmap(o->get_jacobian(M,o; kwargs...), lorbs, on_error = ex->zeros(2))
                    #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
@@ -95,6 +97,8 @@ function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs
     npitch = length(pitch)
     nr = length(r)
     nz = length(z)
+    m = orbs[1].coordinate.m
+    q = orbs[1].coordinate.q
 
     f_rz = zeros(nr,nz)
 
@@ -122,7 +126,7 @@ function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs
                 continue
             end
 
-            lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
+            lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
             if distributed
                 lJs = pmap(o->get_jacobian(M,o; kwargs...), lorbs, on_error = ex->zeros(2))
                            #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
@@ -176,6 +180,8 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
     npitch = length(pitch)
     nr = length(r)
     nz = length(z)
+    m = orbs[1].coordinate.m
+    q = orbs[1].coordinate.q
 
     f_eprz = zeros(nenergy,npitch,nr,nz)
 
@@ -203,7 +209,7 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
                 continue
             end
 
-            lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
+            lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
             if distributed
                 lJs = pmap(o->get_jacobian(M,o; kwargs...), lorbs, on_error = ex->zeros(2))
                            #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
