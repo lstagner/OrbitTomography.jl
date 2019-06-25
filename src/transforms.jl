@@ -54,10 +54,10 @@ function local_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f, orbs
     q = orbs[1].coordinate.q
     lorbs = reshape([get_orbit(M, GCParticle(energy[i],pitch[j],r,z,m,q); kwargs...) for i=1:nenergy,j=1:npitch],nenergy*npitch)
     if distributed
-        lJs = pmap(o->get_jacobian(M,o; kwargs...), lorbs, on_error = ex->zeros(2))
+        lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
                    #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
     else
-        lJs = [get_jacobian(M, o; kwargs...) for o in lorbs]
+        lJs = [get_jacobian(M, o) for o in lorbs]
     end
 
     if covariance == :local
@@ -128,10 +128,10 @@ function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs
 
             lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
             if distributed
-                lJs = pmap(o->get_jacobian(M,o; kwargs...), lorbs, on_error = ex->zeros(2))
+                lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
                            #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
             else
-                lJs = [get_jacobian(M, o; kwargs...) for o in lorbs]
+                lJs = [get_jacobian(M, o) for o in lorbs]
             end
 
             if covariance == :local
@@ -211,10 +211,10 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
 
             lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
             if distributed
-                lJs = pmap(o->get_jacobian(M,o; kwargs...), lorbs, on_error = ex->zeros(2))
+                lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
                            #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
             else
-                lJs = [get_jacobian(M, o; kwargs...) for o in lorbs]
+                lJs = [get_jacobian(M, o) for o in lorbs]
             end
 
             if covariance == :local
