@@ -121,10 +121,7 @@ function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs
         for i=ir:nr
             rr = r[i]
             zz = z[j]
-            if !(domain_check(rr,zz))
-                ir_start += 1
-                continue
-            end
+            !(domain_check(rr,zz)) && continue
 
             lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
             if distributed
@@ -148,12 +145,12 @@ function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs
             w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
             f_ep[w] .= 0.0
             f_rz[i,j] = sum(f_ep)*step(energy)*step(pitch)
-            ir_start += 1
+            ir_start = i + 1
             if checkpoint
                 @save file ir_start iz_start f_rz
             end
        end
-       iz_start += 1
+       iz_start = j + 1
     end
     return RZDensity(f_rz,r,z)
 end
@@ -204,10 +201,7 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
         for i=ir:nr
             rr = r[i]
             zz = z[j]
-            if !(domain_check(rr,zz))
-                ir_start += 1
-                continue
-            end
+            !(domain_check(rr,zz)) && continue
 
             lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
             if distributed
@@ -231,12 +225,12 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
             w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
             f_ep[w] .= 0.0
             f_eprz[:,:,i,j] .= f_ep
-            ir_start += 1
+            ir_start = i + 1
             if checkpoint
                 @save file ir_start iz_start f_eprz
             end
         end
-        iz_start += 1
+        iz_start = j + 1
     end
 
     return EPRZDensity(f_eprz,energy,pitch,r,z)
