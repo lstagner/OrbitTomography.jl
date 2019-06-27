@@ -142,7 +142,7 @@ function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs
             end
 
             f_ep = reshape(max.(Si*(OS.S_inv*f),0.0),nenergy,npitch)
-            detJ = reshape([J[1] for J in lJs],nenergy,npitch)
+            detJ = reshape([length(j) != 0 ? j[1] : 0.0 for j in lJs],nenergy,npitch)
             f_ep .= f_ep./detJ
             f_ep[detJ .== 0.0] .= 0.0
             w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
@@ -225,7 +225,7 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
             end
 
             f_ep = reshape(max.(Si*(OS.S_inv*f),0.0),nenergy,npitch)
-            detJ = reshape([J[1] for J in lJs],nenergy,npitch)
+            detJ = reshape([length(j) != 0 ? j[1] : 0.0 for j in lJs],nenergy,npitch)
             f_ep .= f_ep./detJ
             f_ep[detJ .== 0.0] .= 0.0
             w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
