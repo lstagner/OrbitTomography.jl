@@ -141,7 +141,7 @@ function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs
                 Si = get_global_covariance_matrix(lorbs, orbs, sigma, norms=norms)
             end
 
-            f_ep = reshape(max.(Si*(OS.Σ_inv*f),0.0),nenergy,npitch)
+            f_ep = reshape(max.(Si*(OS.S_inv*f),0.0),nenergy,npitch)
             detJ = reshape([J[1] for J in lJs],nenergy,npitch)
             f_ep .= f_ep./detJ
             f_ep[detJ .== 0.0] .= 0.0
@@ -224,7 +224,7 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
                 Si = get_global_covariance_matrix(lorbs, orbs, sigma, norms=norms)
             end
 
-            f_ep = reshape(max.(Si*(OS.Σ_inv*f),0.0),nenergy,npitch)
+            f_ep = reshape(max.(Si*(OS.S_inv*f),0.0),nenergy,npitch)
             detJ = reshape([J[1] for J in lJs],nenergy,npitch)
             f_ep .= f_ep./detJ
             f_ep[detJ .== 0.0] .= 0.0
