@@ -158,7 +158,7 @@ function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs
     return RZDensity(f_rz,r,z)
 end
 
-struct EPRZDensity{T<:AbstractMatrix,S<:AbstractVector}
+struct EPRZDensity{T<:AbstractArray,S<:AbstractVector}
     d::T
     energy::S
     pitch::S
