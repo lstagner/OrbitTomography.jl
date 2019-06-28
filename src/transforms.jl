@@ -52,6 +52,13 @@ function local_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f, orbs
     npitch = length(pitch)
     m = orbs[1].coordinate.m
     q = orbs[1].coordinate.q
+    #lorbs = Array{Orbit}(undef,nenergy,npitch)
+    #@showprogress for i=1:nenergy
+    #    for j = 1:npitch
+    #        lorbs[i,j] = get_orbit(M, GCParticle(energy[i],pitch[j],r,z,m,q); kwargs...)
+    #    end
+    #end
+    #lorbs = reshape(lorbs,nenergy*npitch)
     lorbs = reshape([get_orbit(M, GCParticle(energy[i],pitch[j],r,z,m,q); kwargs...) for i=1:nenergy,j=1:npitch],nenergy*npitch)
     if distributed
         lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
@@ -97,60 +104,56 @@ function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs
     npitch = length(pitch)
     nr = length(r)
     nz = length(z)
+    inds = CartesianIndices((nr,nz))
     m = orbs[1].coordinate.m
     q = orbs[1].coordinate.q
 
     f_rz = zeros(nr,nz)
 
     if warmstart && isfile(file) && (filesize(file) != 0)
-        @load file ir_start iz_start f_rz
-        ir = ir_start
-        iz = iz_start
+        @load file f_rz last_ind
     else
-        ir_start = 1
-        iz_start = 1
-        ir = 1
-        iz = 1
+        last_ind = inds[1]
     end
 
     if checkpoint
         touch(file)
     end
 
-    for j=iz:nz
-        for i=ir:nr
-            rr = r[i]
-            zz = z[j]
-            !(domain_check(rr,zz)) && continue
+    for I in inds
+        (I != inds[1] && I < last_ind) && continue
+        i = I[1]
+        j = I[2]
+        rr = r[i]
+        zz = z[j]
+        !(domain_check(rr,zz)) && continue
 
-            lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
-            if distributed
-                lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
-                           #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
-            else
-                lJs = [get_jacobian(M, o) for o in lorbs]
-            end
+        lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
+        if distributed
+            lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
+                       #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
+        else
+            lJs = [get_jacobian(M, o) for o in lorbs]
+        end
 
-            if covariance == :local
-                Si = get_covariance_matrix(M, lorbs, orbs, sigma, Js_1=lJs, Js_2=Js,
-                                           distributed=distributed, atol=atol)
-            else
-                Si = get_global_covariance_matrix(lorbs, orbs, sigma, norms=norms)
-            end
+        if covariance == :local
+            Si = get_covariance_matrix(M, lorbs, orbs, sigma, Js_1=lJs, Js_2=Js,
+                                       distributed=distributed, atol=atol)
+        else
+            Si = get_global_covariance_matrix(lorbs, orbs, sigma, norms=norms)
+        end
 
-            f_ep = reshape(max.(Si*(OS.S_inv*f),0.0),nenergy,npitch)
-            detJ = reshape([length(j) != 0 ? j[1] : 0.0 for j in lJs],nenergy,npitch)
-            f_ep .= f_ep./detJ
-            f_ep[detJ .== 0.0] .= 0.0
-            w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
-            f_ep[w] .= 0.0
-            f_rz[i,j] = sum(f_ep)*step(energy)*step(pitch)
-            ir_start = i + 1
-            if checkpoint
-                @save file ir_start iz_start f_rz
-            end
-       end
-       iz_start = j + 1
+        f_ep = reshape(max.(Si*(OS.S_inv*f),0.0),nenergy,npitch)
+        detJ = reshape([length(j) != 0 ? j[1] : 0.0 for j in lJs],nenergy,npitch)
+        f_ep .= f_ep./detJ
+        f_ep[detJ .== 0.0] .= 0.0
+        w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
+        f_ep[w] .= 0.0
+        f_rz[i,j] = sum(f_ep)*step(energy)*step(pitch)
+        if checkpoint
+            @save file f_rz last_ind
+        end
+        last_ind = I
     end
     return RZDensity(f_rz,r,z)
 end
@@ -177,60 +180,55 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
     npitch = length(pitch)
     nr = length(r)
     nz = length(z)
+    inds = CartesianIndices((nr,nz))
     m = orbs[1].coordinate.m
     q = orbs[1].coordinate.q
 
     f_eprz = zeros(nenergy,npitch,nr,nz)
 
     if warmstart && isfile(file) && (filesize(file) != 0)
-        @load file ir_start iz_start f_eprz
-        ir = ir_start
-        iz = iz_start
+        @load file f_rz last_ind
     else
-        ir_start = 1
-        iz_start = 1
-        ir = 1
-        iz = 1
+        last_ind = inds[1]
     end
 
     if checkpoint
         touch(file)
     end
 
-    for j=iz:nz
-        for i=ir:nr
-            rr = r[i]
-            zz = z[j]
-            !(domain_check(rr,zz)) && continue
+    for I in inds
+        i = I[1]
+        j = I[2]
+        rr = r[i]
+        zz = z[j]
+        !(domain_check(rr,zz)) && continue
 
-            lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
-            if distributed
-                lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
-                           #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
-            else
-                lJs = [get_jacobian(M, o) for o in lorbs]
-            end
-
-            if covariance == :local
-                Si = get_covariance_matrix(M, lorbs, orbs, sigma, Js_1=lJs, Js_2=Js,
-                                           distributed=distributed, atol=atol)
-            else
-                Si = get_global_covariance_matrix(lorbs, orbs, sigma, norms=norms)
-            end
-
-            f_ep = reshape(max.(Si*(OS.S_inv*f),0.0),nenergy,npitch)
-            detJ = reshape([length(j) != 0 ? j[1] : 0.0 for j in lJs],nenergy,npitch)
-            f_ep .= f_ep./detJ
-            f_ep[detJ .== 0.0] .= 0.0
-            w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
-            f_ep[w] .= 0.0
-            f_eprz[:,:,i,j] .= f_ep
-            ir_start = i + 1
-            if checkpoint
-                @save file ir_start iz_start f_eprz
-            end
+        lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
+        if distributed
+            lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
+                       #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
+        else
+            lJs = [get_jacobian(M, o) for o in lorbs]
         end
-        iz_start = j + 1
+
+        if covariance == :local
+            Si = get_covariance_matrix(M, lorbs, orbs, sigma, Js_1=lJs, Js_2=Js,
+                                       distributed=distributed, atol=atol)
+        else
+            Si = get_global_covariance_matrix(lorbs, orbs, sigma, norms=norms)
+        end
+
+        f_ep = reshape(max.(Si*(OS.S_inv*f),0.0),nenergy,npitch)
+        detJ = reshape([length(j) != 0 ? j[1] : 0.0 for j in lJs],nenergy,npitch)
+        f_ep .= f_ep./detJ
+        f_ep[detJ .== 0.0] .= 0.0
+        w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
+        f_ep[w] .= 0.0
+        f_eprz[:,:,i,j] .= f_ep
+        if checkpoint
+            @save file f_rz last_ind
+        end
+        last_ind = I
     end
 
     return EPRZDensity(f_eprz,energy,pitch,r,z)
