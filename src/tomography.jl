@@ -1,23 +1,31 @@
-mutable struct OrbitSystem{T}
+mutable struct OrbitSystem{T, WT<:AbstractArray, ST<:AbstractArray,
+                           SiT<:AbstractArray, GT<:AbstractArray,
+                           TT<:AbstractArray}
     # sum(((W*f .- d)./err).^2) + (f .- mu)'*inv(alpha*S)*(f .- mu)
-    W::Matrix{T}
+    W::WT
     d::Vector{T}
     err::Vector{T}
-    S::Matrix{T}
-    S_inv::Matrix{T}
-    G::Matrix{T}
-    T::Matrix{T}
+    S::ST
+    S_inv::SiT
+    G::GT
+    T::TT
     mu::Vector{T}
     alpha::T
 end
 
-function OrbitSystem(W, d, err, S; S_inv = inv(S), G = Array(cholesky(Hermitian(S_inv)).U),
-                     T=diagm(0=>ones(size(W,2))), mu = zeros(size(W,2)), alpha=1.0)
+function Base.show(io::IO, OS::OrbitSystem)
+    println(io, "OrbitSystem")
+    println(io, " # of measurements: $(length(OS.d))")
+    print(io,   " # of orbits: $(size(OS.W,2))")
+end
+
+function OrbitSystem(W, d, err, S; S_inv = inv(S), G = cholesky(S_inv).U,
+                     T=Diagonal(ones(size(W,2))), mu = zeros(size(W,2)), alpha=1.0)
 
     OrbitSystem(W,d,err,S,S_inv,G,T,mu,alpha)
 end
 
-function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2),nonneg=false)
+function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2),nonneg=false,max_iter=30*size(OS.W,1))
 
     d = OS.d
     err = OS.err
@@ -36,7 +44,8 @@ function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2),nonneg=false)
 
     if nonneg
         Γ = sqrt(inv(OS.alpha))*OS.G
-        X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X), alg=:fnnls))
+        X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X),
+                           alg=:fnnls,use_parallel=false,max_iter=max_iter))
     else
         X = Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
     end
@@ -44,9 +53,12 @@ function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2),nonneg=false)
     l = 0.0
     try
         dhat = K*X
-        l = -logabsdet(Σ_X)[1] - logabsdet(Σ_inv)[1] -
+        l = -logabsdet(Array(Σ_X))[1] - logabsdet(Array(Σ_inv))[1] -
             ((d .- dhat)'*Σ_d_inv*(d .- dhat))[1] - ((X .- mu_X)'*Σ_X_inv*(X .- mu_X))[1]
     catch er
+        if isa(er,InterruptException)
+            rethrow(er)
+        end
         l = -Inf
     end
 
@@ -59,7 +71,7 @@ function optimize_alpha!(OS; log_bounds = (-6,6), kwargs...)
         return -marginal_loglike(OS; kwargs...)
     end
 
-    op = optimize(f, log_bounds[1], log_bounds[2], Brent())
+    op = optimize(f, log_bounds[1], log_bounds[2], Brent(),rel_tol=1e-3)
 
     OS.alpha = 10.0^Optim.minimizer(op)
 
@@ -160,7 +172,20 @@ function inv_chol(Σ; rtol=0.0)
     return Σ_inv, Γ
 end
 
-function solve(OS::OrbitSystem; norm=1e18/size(OS.W,2), nonneg=true)
+function inv_chol(S::LinearAlgebra.SVD; rtol=0.0)
+    if rtol == 0.0
+        Σ_inv = inv(S)
+        Γ = cholesky(Hermitian(Σ_inv)).U
+    else
+        smax = maximum(S.S)
+        svals_inv = Diagonal([s >= smax*rtol ? 1/s : 0.0 for s in S.S])
+        Σ_inv = (svals_inv*S.Vt)' * S.U'
+        Γ = sqrt.(svals_inv)*S.Vt
+    end
+    return Σ_inv, Γ
+end
+
+function solve(OS::OrbitSystem; norm=1e18/size(OS.W,2), nonneg=true,max_iter=30*size(OS.W,1))
 
     d = OS.d
     err = OS.err
@@ -178,8 +203,12 @@ function solve(OS::OrbitSystem; norm=1e18/size(OS.W,2), nonneg=true)
 
     if nonneg
         try
-            X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X), alg=:fnnls))
-        catch err
+            X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X),
+                               alg=:fnnls,use_parallel=false,max_iter=max_iter))
+        catch er
+            if isa(er,InterruptException)
+                rethrow(er)
+            end
             @warn "Non-negative Least Squares failed. Using MAP estimate"
             println(err)
             Σ_inv = Σ_X_inv .+ K'*Σ_d_inv*K
