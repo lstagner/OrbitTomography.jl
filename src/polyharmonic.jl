@@ -8,7 +8,14 @@ end
 
 function polyharmonicK(r,K)
     if iseven(K)
-        return r < 1 ? (r.^(K-1))*log(r.^r) : (r^K)*log(r)
+        iszero(r) && return zero(r)
+        if r >= 1.0
+            return (r^K)*log(r)
+        elseif 0.0 < r < 1.0
+            return (r.^(K-1))*log(r.^r)
+        elseif iszero(r) # Needed for autodiff to work at zero
+            return zero(r)
+        end
     else
         return r^K
     end
