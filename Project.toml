@@ -1,7 +1,7 @@
 name = "OrbitTomography"
 uuid = "9be2d679-58c4-56f3-b3be-0fde37438d3e"
-version = "0.1.0"
 author = ["Luke Stagner <stagnerl@fusion.gat.com>"]
+version = "0.1.0"
 
 [deps]
 Clustering = "aaaa29a8-35af-508c-8bc3-b662a17a0fe5"
