@@ -309,7 +309,12 @@ function eprz_cov(energy, pitch, r, z, p::Vector)
 end
 
 function eprz_kernel(x,y,Σ_inv)
-    d = S4(x[1] - y[1], (acos(x[2]) - acos(y[2]))/(2pi), x[3]-y[3],x[4]-y[4])
+    theta_x = acos(clamp(x[2],-1.0,1.0))
+    theta_y = acos(clamp(y[2],-1.0,1.0))
+    d = S4(x[1] - y[1], # dE
+           (theta_x - theta_y)/(2pi), # dtheta/2pi
+           x[3] - y[3], # dr
+           x[4] - y[4]) # dz
     #d = x .- y
     l = d'*Σ_inv*d
     return exp(-0.5*l)
