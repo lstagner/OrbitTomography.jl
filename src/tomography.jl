@@ -44,7 +44,7 @@ function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2),nonneg=false,m
 
     if nonneg
         Γ = sqrt(inv(OS.alpha))*OS.G
-        X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X),
+        X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, Γ*mu_X),
                            alg=:fnnls,use_parallel=false,max_iter=max_iter))
     else
         X = Σ_inv \ (K'*(Σ_d_inv*d) + Σ_X_inv*mu_X)
@@ -203,7 +203,7 @@ function solve(OS::OrbitSystem; norm=1e18/size(OS.W,2), nonneg=true,max_iter=30*
 
     if nonneg
         try
-            X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, mu_X),
+            X = vec(nonneg_lsq(vcat(K./err, Γ), vcat(d./err, Γ*mu_X),
                                alg=:fnnls,use_parallel=false,max_iter=max_iter))
         catch er
             if isa(er,InterruptException)
