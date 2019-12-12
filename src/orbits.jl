@@ -44,7 +44,7 @@ function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::Abstract
                     o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
                 end
 
-                if o.class in (:incomplete,:degenerate,:lost)
+                if o.class in (:incomplete,:invalid,:lost)
                     o = Orbit(o.coordinate,:incomplete)
                 end
                 put!(channel, true)
