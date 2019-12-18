@@ -322,9 +322,9 @@ end
 
 function make_jacobian_spline(J::Vector{T}, t) where T<:Number
     if length(t) == 0
-        Js = scale(interpolate(zeros(2),BSpline(Cubic(Periodic(OnGrid())))),range(0.0,1.0,length=2))
+        Js = scale(interpolate(zeros(2),BSpline(Linear())),range(0.0,1.0,length=2))
     else
-        Js = scale(interpolate(J, BSpline(Cubic(Periodic(OnGrid())))), t)
+        Js = scale(interpolate(J, BSpline(Linear())), t)
     end
     return Js
 end
