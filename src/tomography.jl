@@ -25,6 +25,34 @@ function OrbitSystem(W, d, err, S; S_inv = inv(S), G = cholesky(S_inv).U,
     OrbitSystem(W,d,err,S,S_inv,G,T,mu,alpha)
 end
 
+function lcurve_point(OS::OrbitSystem, f::Vector)
+    W = OS.W
+    d = OS.d
+    err = OS.err
+    mu = OS.mu
+    S_inv = OS.S_inv
+
+    chisq = sum(((W*f .- d)./err).^2)
+    R = (f .- mu)'*S_inv*(f .- mu)
+    return chisq, R
+end
+
+function lcurve_point(OS::OrbitSystem; kwargs...)
+    f = solve(OS; kwargs...)
+    return lcurve_point(OS,f)
+end
+
+function lcurve(OS; n = 50, log_bounds = (-6,6), kwargs...)
+    alpha = 10.0.^range(log_bounds...,length=n)
+    chisq = zeros(n)
+    R = zeros(n)
+    for i=1:n
+        OS.alpha = alpha[i]
+        chisq[i], R[i] = lcurve_point(OS; kwargs...)
+    end
+    return alpha, chisq, R
+end
+
 function marginal_loglike(OS::OrbitSystem; norm=1e18/size(OS.W,2),nonneg=false,max_iter=30*size(OS.W,1))
 
     d = OS.d

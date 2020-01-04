@@ -81,7 +81,7 @@ include("weights.jl")
 export AbstractWeight, FIDAOrbitWeight
 
 include("tomography.jl")
-export OrbitSystem, marginal_loglike, optimize_alpha!, estimate_rtol, optimize_parameters, inv_chol, solve
+export OrbitSystem, lcurve_point, lcurve, marginal_loglike, optimize_alpha!, estimate_rtol, optimize_parameters, inv_chol, solve
 
 include("transforms.jl")
 export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution
