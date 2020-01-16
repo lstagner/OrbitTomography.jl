@@ -152,7 +152,7 @@ function Base.:(*)(A::RepeatedBlockDiagonal , a::Union{SparseVector{S,T},SparseM
     channel = RemoteChannel(()->Channel{Bool}(A.n), 1)
     B = fetch(@sync begin
         @async while take!(channel)
-            next!(p)
+            ProgressMeter.next!(p)
         end
         @async begin
             B = @distributed (+) for i=1:A.n
@@ -182,7 +182,7 @@ function Base.:(*)(a::Union{SparseVector{S,T},SparseMatrixCSC{S,T}}, A::Repeated
     channel = RemoteChannel(()->Channel{Bool}(A.n), 1)
     B = fetch(@sync begin
         @async while take!(channel)
-            next!(p)
+            ProgressMeter.next!(p)
         end
         @async begin
             B = @distributed (+) for i=1:A.n

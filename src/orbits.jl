@@ -32,7 +32,7 @@ function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::Abstract
     channel = RemoteChannel(()->Channel{Bool}(norbs), 1)
     orbs = fetch(@sync begin
         @async while take!(channel)
-            next!(p)
+            ProgressMeter.next!(p)
         end
         @async begin
             orbs = @distributed (vcat) for i=1:norbs
@@ -189,7 +189,7 @@ function orbit_matrix(M::AxisymmetricEquilibrium, grid::OrbitGrid, energy, pitch
     channel = RemoteChannel(()->Channel{Bool}(nsubs), 1)
     R = fetch(@sync begin
         @async while take!(channel)
-            next!(p)
+            ProgressMeter.next!(p)
         end
         @async begin
             R = @distributed (hcat) for i=1:nsubs
@@ -371,7 +371,7 @@ function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles; 
 
     t = @sync begin
         @async while take!(channel)
-            next!(p)
+            ProgressMeter.next!(p)
         end
 
         @async begin
