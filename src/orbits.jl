@@ -365,7 +365,7 @@ function combine_orbits(orbits)
     return Orbit(cc, class, tau_p, tau_t, path)
 end
 
-function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles; kwargs...)
+function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles, GCP::T;  kwargs...) where T <: Function
     p = Progress(d.npart)
     channel = RemoteChannel(()->Channel{Bool}(d.npart),1)
 
@@ -376,7 +376,7 @@ function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles; 
 
         @async begin
             orbs = @distributed (vcat) for i=1:d.npart
-                o = get_orbit(M,GCParticle(d.energy[i],M.sigma*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
+                o = get_orbit(M,GCP(d.energy[i],M.sigma*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
                 put!(channel,true)
                 o.coordinate
             end
@@ -387,9 +387,9 @@ function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles; 
     return fetch(t)
 end
 
-function fbm2orbit(M::AxisymmetricEquilibrium,d::FIDASIMGuidingCenterFunction; n=1_000_000, kwargs...)
+function fbm2orbit(M::AxisymmetricEquilibrium,d::FIDASIMGuidingCenterFunction; GCP=GCDeuteron, n=1_000_000, kwargs...)
     dmc = fbm2mc(d,n=n)
-    return mc2orbit(M,dmc; kwargs...)
+    return mc2orbit(M, dmc, GCP; kwargs...)
 end
 
 struct OrbitSpline{T<:Function}
