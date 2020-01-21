@@ -242,7 +242,7 @@ function read_orbit_grid(filename)
     return OrbitGrid(energy,pitch,r,counts,orbit_index,class,tau_p,tau_t)
 end
 
-function Base.map(grid::OrbitGrid, f::Vector)
+function map_orbits(grid::OrbitGrid, f::Vector)
     if length(grid.counts) != length(f)
         throw(ArgumentError("Incompatible sizes"))
     end
@@ -275,7 +275,7 @@ function orbit_index(grid::OrbitGrid, o::EPRCoordinate; nearest=false)
     return ind
 end
 
-function Base.bin(grid::OrbitGrid, orbits; weights::Union{Nothing,Vector},nearest=false)
+function bin_orbits(grid::OrbitGrid, orbits; weights::Union{Nothing,Vector},nearest=false)
 
     if weights != nothing
         length(weights) == length(orbits) || error("Incompatible weight vector size")
