@@ -338,7 +338,7 @@ function get_covariance(o1::OrbitSpline, J1::T, o2::OrbitSpline, J2::T, Σ_inv::
     return abs(K)
 end
 
-function get_covariance(o1::OrbitSpline, J1::T, o2::OrbitSpline, J2::T, sigma::Vector, atol) where {T<:AbstractInterpolation}
+function get_covariance(o1::OrbitSpline, J1::T, o2::OrbitSpline, J2::T, sigma::AbstractVector, atol) where {T<:AbstractInterpolation}
     Σ_inv = S44(inv(Diagonal(sigma.^2)))
     return get_covariance(o1, J1, o2, J2, Σ_inv, atol)
 end
@@ -526,7 +526,7 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval, pool::Abstrac
 end
 
 #1-arg Covariance
-function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
+function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::AbstractVector;
                                Js::Vector{Vector{Float64}} = Vector{Float64}[],
                                sparse::Bool = false, atol::Float64 = 1e-3,
                                minval::Float64 = atol, distributed = false,
@@ -575,7 +575,7 @@ function get_correlation_matrix(cov)
     return cov./(K*K')
 end
 
-function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::Vector;
+function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::AbstractVector;
                                 Js::Vector{Vector{Float64}} = Vector{Float64}[],
                                 sparse::Bool = false, atol::Float64 = 1e-3,
                                 minval::Float64 = atol, distributed = false,
@@ -656,7 +656,7 @@ function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval,
 end
 
 #2-arg Covariance
-function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::Vector;
+function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::AbstractVector;
                                 Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
                                 Js_2::Vector{Vector{Float64}} = Vector{Float64}[],
                                 sparse::Bool = false, atol::Float64 = 1e-3,
@@ -787,7 +787,7 @@ function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, at
     return sparse(Σ)
 end
 
-function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::Vector;
+function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::AbstractVector;
                                 ks_1::Vector{Float64} = Float64[],
                                 Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
                                 ks_2::Vector{Float64} = Float64[],
