@@ -63,6 +63,7 @@ export AbstractDistribution, FIDASIMGuidingCenterFunction, FIDASIMGuidingCenterP
 export read_fidasim_distribution, write_fidasim_distribution
 export split_particles, fbm2mc
 export FIDASIMBeamGeometry, FIDASIMSpectraGeometry, FIDASIMNPAGeometry, write_fidasim_geometry
+export FIDASIMPlasmaParameters
 export merge_spectra_geometry
 
 include("orbits.jl")

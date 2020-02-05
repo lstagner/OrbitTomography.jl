@@ -610,7 +610,7 @@ end
 function Base.show(io::IO, s::FIDASIMNPAGeometry)
     println(io, "FIDASIMNPAGeometry")
     println(io, "  nchan: $(s.nchan)")
-    println(io, "  system: "*s.system)
+    print(io, "  system: "*s.system)
 end
 
 function write_fidasim_geometry(nbi::FIDASIMBeamGeometry;
@@ -669,4 +669,68 @@ function write_fidasim_geometry(nbi::FIDASIMBeamGeometry;
             file["npa/d_tedge"] = npa.d_tedge
         end
     end
+end
+
+struct FIDASIMPlasmaParameters
+    nr::Int
+    nz::Int
+    nphi::Int
+    r::Vector{Float64}
+    z::Vector{Float64}
+    phi::Vector{Float64}
+    mask::Union{Matrix{Int16},Array{Int16,3}}
+    te::Union{Matrix{Float64},Array{Float64,3}}
+    ti::Union{Matrix{Float64},Array{Float64,3}}
+    dene::Union{Matrix{Float64},Array{Float64,3}}
+    zeff::Union{Matrix{Float64},Array{Float64,3}}
+    vr::Union{Matrix{Float64},Array{Float64,3}}
+    vt::Union{Matrix{Float64},Array{Float64,3}}
+    vz::Union{Matrix{Float64},Array{Float64,3}}
+    denn::Union{Matrix{Float64},Array{Float64,3}}
+end
+
+function FIDASIMPlasmaParameters(filename::String)
+    isfile(filename) || error("File does not exist")
+
+    f = h5open(filename)
+
+    fp = f["plasma"]
+    nr = read(fp["nr"])
+    nz = read(fp["nz"])
+    if "nphi" in names(fp)
+        nphi = read(fp["nphi"])
+    else
+        nphi = 1
+    end
+    r = read(fp["r"])
+    z = read(fp["z"])
+    if nphi > 1
+        phi = read(fp["phi"])
+    else
+        phi = [0.0]
+    end
+
+    mask = read(fp["mask"])
+    te = read(fp["te"])
+    ti = read(fp["ti"])
+    dene = read(fp["dene"])
+    zeff = read(fp["zeff"])
+
+    vr = read(fp["vr"])
+    vt = read(fp["vt"])
+    vz = read(fp["vz"])
+
+    if "denn" in names(fp)
+        denn = read(fp["denn"])
+    else
+        denn = zero(dene)
+    end
+
+    close(f)
+
+    return FIDASIMPlasmaParameters(nr,nz,nphi,r,z,phi,mask,te,ti,dene,zeff,vr,vt,vz,denn)
+end
+
+function Base.show(io::IO, s::FIDASIMPlasmaParameters)
+    print(io, "FIDASIMPlasmaParameters: $(s.nr)×$(s.nz)×$(s.nphi)")
 end
