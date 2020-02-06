@@ -734,3 +734,13 @@ end
 function Base.show(io::IO, s::FIDASIMPlasmaParameters)
     print(io, "FIDASIMPlasmaParameters: $(s.nr)×$(s.nz)×$(s.nphi)")
 end
+
+function impurity_density(s::FIDASIMPlasmaParameters, imp)
+    zeff = clamp.(s.zeff, 1, imp)
+    return ((zeff .- 1)./(imp*(imp-1))) .* s.dene
+end
+
+function ion_density(s::FIDASIMPlasmaParameters, imp)
+    denimp = impurity_density(s, imp)
+    return s.dene .- imp*denimp
+end
