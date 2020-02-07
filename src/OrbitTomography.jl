@@ -58,13 +58,16 @@ export InstrumentalResponse, kernel
 export ExperimentalSpectra, TheoreticalSpectra
 
 include("io.jl")
-export FIDASIMSpectra, split_spectra, merge_spectra, apply_instrumental!
+export FIDASIMSpectra
 export AbstractDistribution, FIDASIMGuidingCenterFunction, FIDASIMGuidingCenterParticles, FIDASIMFullOrbitParticles
 export read_fidasim_distribution, write_fidasim_distribution
-export split_particles, fbm2mc
 export FIDASIMBeamGeometry, FIDASIMSpectraGeometry, FIDASIMNPAGeometry, write_fidasim_geometry
-export FIDASIMPlasmaParameters, impurity_density, ion_density
-export merge_spectra_geometry
+export FIDASIMPlasmaParameters
+
+include("fidasim_utils.jl")
+export split_spectra, merge_spectra, apply_instrumental!, merge_spectra_geometry
+export split_particles, fbm2mc
+export impurity_density, ion_density
 
 include("orbits.jl")
 export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
