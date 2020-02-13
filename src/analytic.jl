@@ -8,7 +8,7 @@ function _slowing_down(E::T, p::T, E0::T, p0::T;
     tau_s = Te^1.5 # there are other factors as well
     E >= E0  && return 0.0
     v = sqrt(2*(e0*E*1e3)/(m_b))
-    vb = sqrt(2*(e0*Eb*1e3)/(m_b))
+    vb = sqrt(2*(e0*E0*1e3)/(m_b))
     vc3 = 0.75*sqrt(pi)*((2*(Te*e0*1e3)/m_e)^(1.5))*((ni/ne) * Zi^2 * (m_e/(m_th)))
 
     beta = (m_th*Zeff)/(2*m_b)
