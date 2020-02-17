@@ -1,3 +1,7 @@
+"""
+
+Struct to represent .h5 spectra produced by FIDASIM.
+"""
 struct FIDASIMSpectra{T<:Real}
     nchan::Int
     nlambda::Int
@@ -13,6 +17,36 @@ struct FIDASIMSpectra{T<:Real}
     pfida::Union{Zeros{T,2},Zeros{T,3},Matrix{T},Array{T,3}}
 end
 
+"""
+    FIDASIMSpectra("path/to/FIDASIM/spectra/file.h5")
+
+Create instance of FIDASIMSpectra struct from .h5 file. The data can then be
+accessed via Julia struct syntax.
+
+# Example
+```julia-repl
+julia> myFIDASIMSpectra = FIDASIMSpectra("path/to/FIDASIM/spectra/file.h5")
+FIDASIMSpectra
+    nchan = 81
+    nlambda = 2000
+
+julia> lambda_array = myFIDASIMSpectra.lambda
+2000-element Array{Float64,1}:
+647.005
+647.015
+647.025
+647.035
+⋮
+
+julia> myfida_data = myFIDASIMSpectra.fida
+2000×81 Array{Float64,2}:
+0.0 0.0 ... 0.0 0.0
+0.0 0.0 ... 0.0 0.0
+⋮   ⋮    ⋮    ⋮   ⋮
+0.0 0.0 ... 0.0 0.0
+0.0 0.0 ... 0.0 0.0
+```
+"""
 function FIDASIMSpectra(fname::String)
     isfile(fname) || error("File does not exist")
 
@@ -167,6 +201,33 @@ function Base.show(io::IO, s::FIDASIMFullOrbitParticles)
     println(io, "  nparticles = $(s.npart)")
 end
 
+"""
+    read_fidasim_distribution("path/to/FIDASIM/distribution/.h5/file")
+
+Read FIDASIM distribution .h5 file. Return FIDASIMGuidingCenterFunction, FIDASIMGuidingCenterParticles
+or FIDASIMFullOrbitParticles depending on dtype variable. The data can then be accessed via Julia struct
+syntax.
+
+# Example
+```julia-repl
+julia> myFIDASIM_distribution = read_fidasim_distribution("path/to/FIDASIM/distribution/.h5/file")
+FIDASIMGuidingCenterFunction
+
+julia> r_array = myFIDASIM_distribution.r
+70-element Array{Float64,1}:
+ 100.0
+ 102.0
+ 104.0
+ 106.0
+ 108.0
+ 110.0
+ 112.0
+ 114.0
+ ⋮
+
+julia> 
+```
+"""
 function read_fidasim_distribution(filename::String)
     isfile(filename) || error("File does not exist")
 
@@ -187,6 +248,17 @@ function read_fidasim_distribution(filename::String)
     return d
 end
 
+"""
+    write_fidasim_distribution(M,orbit_array)
+    write_fidasim_distribution(M,orbit_array,filename="myOrbit_distribution.h35",chunksize=1000)
+
+Write array of orbits (as found in Julia package GuidingCenterOrbits.jl/src/orbit.jl/Orbit) calculated in Julia to an 
+.h5 distribution file which can be used as input to FIDASIM. If the array of orbits is longer than 1000, it is highly 
+recommended to set the chunksize to approx 1000. This will then produce several .h5 distribution files. This is because 
+each distribution file should have a reasonable size to be read by FIDASIM. So if write_fidasim_distribution() creates 
+15 .h5 files for example, you will need to do 15 FIDASIM runs and then combine the 15 output spectras into one. 
+This can be done in numerous ways, taking care due to the likely large file amount of memory required.
+"""
 function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; filename="orbits.h5",time=0.0,ntot=1e19,chunksize=0)
 
     if chunksize == 0
