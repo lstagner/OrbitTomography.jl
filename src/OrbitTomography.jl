@@ -62,12 +62,12 @@ export FIDASIMSpectra
 export AbstractDistribution, FIDASIMGuidingCenterFunction, FIDASIMGuidingCenterParticles, FIDASIMFullOrbitParticles
 export read_fidasim_distribution, write_fidasim_distribution
 export FIDASIMBeamGeometry, FIDASIMSpectraGeometry, FIDASIMNPAGeometry, write_fidasim_geometry
-export FIDASIMPlasmaParameters
+export FIDASIMPlasmaParameters, FIDAWeightFunction, make_synthetic_weight_matrix
 
 include("fidasim_utils.jl")
 export split_spectra, merge_spectra, apply_instrumental!, merge_spectra_geometry
 export split_particles, fbm2mc
-export impurity_density, ion_density
+export impurity_density, ion_density, weight_matrix
 
 include("orbits.jl")
 export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
@@ -92,6 +92,10 @@ include("transforms.jl")
 export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution
 
 include("analytic.jl")
-export slowing_down, bimaxwellian, maxwellian
+export lnΔ_ee, lnΔ_ei, lnΔ_ii
+export gaussian, slowing_down, approx_slowing_down, bimaxwellian, maxwellian
+
+include("basis.jl")
+export Basis, construct_basis, evaluate
 
 end # module

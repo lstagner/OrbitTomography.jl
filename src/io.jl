@@ -534,3 +534,27 @@ end
 function Base.show(io::IO, s::FIDASIMPlasmaParameters)
     print(io, "FIDASIMPlasmaParameters: $(s.nr)×$(s.nz)×$(s.nphi)")
 end
+
+mutable struct FIDAWeightFunction{TL<:AbstractVector,TE<:AbstractVector,
+                                  TP<:AbstractVector,TW<:AbstractArray}
+    lambda::TL
+    energy::TE
+    pitch::TP
+    W::TW
+end
+
+function FIDAWeightFunction(filename::String,ichan)
+    isfile(filename) || error("File does not exist")
+
+    f = h5open(filename)
+
+    W = dropdims(f["weight"][:,:,:,ichan],dims=4)
+    lambda = read(f,"lambda")
+    energy = read(f,"energy")
+    pitch = read(f,"pitch")
+    close(f)
+
+    dE = energy[2]-energy[1]
+    dP = abs(pitch[2]-pitch[1])
+    return FIDAWeightFunction(lambda,energy,pitch,W*(1e4*dE*dP))
+end
