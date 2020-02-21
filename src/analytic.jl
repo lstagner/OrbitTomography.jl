@@ -45,11 +45,22 @@ function lnΔ_ii(ni1, Ti1, ni2, Ti2; mu1=H2_amu, mu2=H2_amu, Z1=1,Z2=1)
     return 23 - log(((Z1*Z2*(mu1+mu2))/(mu1*Ti2 + mu2*Ti1))*sqrt((ni1*Z1^2)/Ti1 + (ni2*Z2^2)/Ti2))
 end
 
-function lnΔ_ii(ne, Te, beta_D; mu1=H2_amu, mu2=H2_amu, Z1=1, Z2=1)
+function lnΔ_ii(ni1, Ti1, ni2, Ti2, ne, Te, beta_D; mu1=H2_amu, mu2=H2_amu, Z1=1, Z2=1)
     # Counter-streaming ions (relative velocity v_D = beta_D*c) in the presence of warm electrons
     # NRL Plasma Formulary ne in cm^-3, Te in eV
 
-    return 43 - log((Z1*Z2*(mu1 + mu2)/(mu1*mu2*beta_D^2))*sqrt(ne/Te))
+    m_i1 = mass_u*mu1
+    m_i2 = mass_u*mu2
+    m_e = mass_u*e_amu
+    L1 = Ti1*e0/m_i1
+    L2 = Ti2*e0/m_i2
+    U = Te*e0/m_e
+
+    if max(L1, L2) < (beta_D*c0)^2 < U
+        return 43 - log((Z1*Z2*(mu1 + mu2)/(mu1*mu2*beta_D^2))*sqrt(ne/Te))
+    else
+        return lnΔ_ii(ni1, Ti1, ni2, Ti2; mu1=mu1, mu2=mu2, Z1=Z1, Z2=Z2)
+    end
 end
 
 function legendre(x::T, nterms) where T
@@ -86,17 +97,95 @@ function _slowing_down_legendre_expansion(xi::T, xi0::T, u::T, nterms) where T
     _slowing_down_legendre_expansion(u, P, P0)
 end
 
-function _slowing_down(E::T, E0::T, P::Vector, P0::Vector; tau_off = 1.0, tau = 1.0,
-                       th_amu = H2_amu, b_amu = th_amu, imp_amu = C6_amu,
+function slowing_down_time(ne, Te, Ti, Zeff;
+                           Ai = H2_amu, Ab = H2_amu, Aimp=C6_amu,
+                           Zi = 1, Zimp = 6, Zb=1)
+    # Calculate Slowing down time on electrons
+    # Heating of toroidal plasmas by neutral injection: T H Stix 1972 Plasma Phys. 14 367
+    # Te in keV, ne in cm^-3
+
+    nimp = Zeff > 1 ? ne*(Zeff - 1)/(Zimp*(Zimp-1)) : zero(ne)
+    ni = max(ne - Zimp*nimp,zero(ne))
+
+    lnΔ_e = lnΔ_ei(ne, Te*1e3, ni, Ti*1e3; mu=Ab, Z=Zb)
+
+    tau_s = 6.27e8 * Ab*((Te*1e3)^1.5)/(ne*lnΔ_e*Zb^2)
+
+    return tau_s
+end
+
+function _electron_ion_drag_difference(Eb, ne, Te, Ti, Zeff; Ab=H2_amu, Ai=H2_amu, Aimp=C6_amu, Zb=1,Zi=1,Zimp=6)
+    # Calculates difference of electron drag - ion drag
+    # Energetic ion distribution resulting from neutral beam injection in tokamaks: J Gaffey 1976 J. Plasma Phys. 16 149
+    # E0/Te in keV, ne in cm^-3
+
+    m_e = e_amu*mass_u
+    m_b = Ab*mass_u
+    m_imp = Aimp*mass_u
+    m_i = Ai*mass_u
+
+    v_b = sqrt(2*Eb*e0*1e3/m_b)
+    v_e = sqrt(2*Te*e0*1e3/m_e)
+
+    nimp = Zeff > 1 ? ne*(Zeff-1)/((Zimp*(Zimp-1))) : zero(ne)
+    ni = max(ne - Zimp*nimp,zero(ne))
+
+    lnΔ_be = lnΔ_ei(ne, Te*1e3, ni, Ti*1e3; mu=Ab, Z=Zb)
+    Γ_be = (2*pi*ne*(e0^4)*Zb^2*lnΔ_be)/(m_b^2)
+
+    electron_drag = ((8*Γ_be*m_b)/(3*sqrt(pi)*m_e*v_e^3))*v_b^3
+
+    lnΔ_bi = lnΔ_ii(ni, Ti*1e3, ni, Ti*1e3, ne, Te*1e3, v_b/c0; mu1=Ab, Z1=Zb, mu2=Ai, Z2=Zi)
+    Γ_bi = (2*pi*ni*(e0^4)*Zi^2*Zb^2*lnΔ_bi)/(m_b^2)
+
+    lnΔ_bimp = lnΔ_ii(ni, Ti*1e3, nimp, Ti*1e3, ne, Te*1e3, v_b/c0; mu1=Ab, Z1=Zb, mu2=Aimp, Z2=Zimp)
+    Γ_bimp = (2*pi*nimp*(e0^4)*(Zimp^2)*(Zb^2)*lnΔ_bimp)/(m_b^2)
+
+    ion_drag = 2*m_b*(Γ_bi/m_i + Γ_bimp/m_imp)
+
+    return electron_drag - ion_drag
+end
+
+function critical_energy(ne, Te, Ti, Zeff; Emax = 300.0,
+                         Ai = H2_amu, Aimp = C6_amu, Ab=H2_amu,
+                         Zi = 1, Zimp=6, Zb=1)
+    # Calculates critical energy using root finding on drags
+    # Energetic ion distribution resulting from neutral beam injection in tokamaks: J Gaffey 1976 J. Plasma Phys. 16 149
+    # E0/Te in keV, ne in cm^-3
+
+    Ec = find_zero(x -> _electron_ion_drag_difference(x, ne, Te, Ti, Zeff;
+                   Ai=Ai, Aimp=Aimp, Ab=Ab, Zi=Zi,Zimp=Zimp, Zb=Zb),
+                  (0, Emax))
+    return Ec
+end
+
+function approx_critical_energy(ne, Te, Zeff; correction_factor = 1.0,
+                                Ai = H2_amu, Aimp = C6_amu, Ab=H2_amu,
+                                Zi = 1, Zimp=6, Zb=1)
+    # Calculate critical energy assuming lnΔ_be == lnΔ_bi
+    # For DIII-D a correction factor of (lnΔ_bi/lnΔ_be)^(2/3) ≈ 1.2 can be used
+    # Heating of toroidal plasmas by neutral injection: T H Stix 1972 Plasma Phys. 14 367
+    # E0/Te in keV, ne in cm^-3
+
+    nimp = Zeff > 1 ? ne*(Zeff - 1)/(Zimp*(Zimp-1)) : zero(ne)
+    ni = max(ne - Zimp*nimp,zero(ne))
+
+    # average charge to mass ratio (avg_cmr) is where approximation comes in
+    avg_cmr = (ni*(Zi^2/Ai) + nimp*(Zimp^2/Aimp))/ne
+    Ec = 14.8 * Ab * Te * correction_factor*avg_cmr^(2/3)
+
+    return Ec
+end
+
+function _slowing_down(E::T, E0::T, P::Vector, P0::Vector;
+                       tau_on = 0.0, tau_off = 1.0, tau = 1.0,
+                       Ai = H2_amu, Ab = Ai, Aimp = C6_amu,
                        Te = 1, Ti = Te, Zeff = 1, Zi=1, Zimp=6, Zb=Zi, ne = 1) where T<:Number
     # Te/Ti in keV; ne in cm^-3
 
     E >= E0  && return 0.0
 
-    m_e = mass_u*e_amu
-    m_b = mass_u*b_amu
-    m_th = mass_u*th_amu
-    m_imp = mass_u*imp_amu
+    m_b = mass_u*Ab
 
     v = sqrt(2*(e0*E*1e3)/(m_b))
     v3 = v^3
@@ -105,18 +194,9 @@ function _slowing_down(E::T, E0::T, P::Vector, P0::Vector; tau_off = 1.0, tau = 
 
     J = v*((e0*1e3)/m_b)
 
-    nimp = Zeff > 1 ? ne*(Zeff - 1)/(Zimp*(Zimp-1)) : zero(ne)
-    ni = max(ne - Zimp*nimp,zero(ne))
+    tau_s = slowing_down_time(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
+    Ec = critical_energy(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
 
-    lnΔ_e =     lnΔ_ei(ne, Te*1e3, ni, Ti*1e3; mu=b_amu, Z=Zi)
-    lnΔ_i_i =   lnΔ_ii(ne, Te*1e3, vb/c0; mu1=th_amu, mu2=b_amu, Z1=Zi, Z2=Zb)
-    lnΔ_i_imp = lnΔ_ii(ne, Te*1e3, vb/c0; mu1=imp_amu, mu2=b_amu, Z1=Zimp, Z2=Zb)
-
-    # Calculate Slowing down time and critical energy/velocity
-    # Heating of toroidal plasmas by neutral injection: T H Stix 1972 Plasma Phys. 14 367
-    avg_cmr = (lnΔ_i_i*ni*(Zi^2/th_amu) + lnΔ_i_imp*nimp*(Zimp^2/imp_amu))/(ne*lnΔ_e)
-    Ec = 14.8 * b_amu * Te * avg_cmr^(2/3)
-    tau_s = 6.27e8 * b_amu*((Te*1e3)^1.5)/(ne*lnΔ_e*Zb^2)
     vc = sqrt(2*(e0*Ec*1e3)/m_b)
     vc3 = vc^3
 
@@ -125,13 +205,17 @@ function _slowing_down(E::T, E0::T, P::Vector, P0::Vector; tau_off = 1.0, tau = 
     u2 = (vb3 + vc3)*inv_v3vc3
     u = (u1*u2)^(Zeff/6)
 
-    t_0 = tau_s*log(u2)/3
+    if tau_on > tau_off
+        tau_off = Inf
+    end
     t_b = tau_s*log((vb3+vc3)/vc3)/3
-    t_1 = tau_off*t_b
-    t = tau*t_b
+    t_0 = tau_on*t_b
+    t_th = tau_s*log(u2)/3
+    t_1 = tau_off*t_b - t_0
+    t = tau*t_b - t_0
 
     S = min(t,t_b,t_1)/t_b
-    U = heaviside(t - t_0) - heaviside(t - t_1 - t_0)
+    U = heaviside(t - t_th) - heaviside(t - t_1 - t_th)
     if U == 0
         return zero(T)
     end
@@ -163,16 +247,14 @@ function slowing_down(energy::AbstractVector, pitch::AbstractVector, E0, p0; nte
 end
 
 function _approx_slowing_down(E::T, p::T, E0::T, p0::T;
-                       th_amu = H2_amu, b_amu = th_amu, imp_amu = C6_amu,
+                       Ai = H2_amu, Ab = Ai, Aimp = C6_amu,
                        Te = 1, Ti = Te, Zeff = 1, Zi=1, Zimp=6, Zb=Zi, ne = 1) where T<:Number
     # Te/Ti in keV; ne in cm^-3
 
     E >= E0  && return 0.0
 
-    m_e = mass_u*e_amu
-    m_b = mass_u*b_amu
-    m_th = mass_u*th_amu
-    m_imp = mass_u*imp_amu
+    m_b = mass_u*Ab
+    m_i = mass_u*Ai
 
     v = sqrt(2*(e0*E*1e3)/(m_b))
     v3 = v^3
@@ -181,24 +263,15 @@ function _approx_slowing_down(E::T, p::T, E0::T, p0::T;
 
     J = v*((e0*1e3)/m_b)
 
-    nimp = Zeff > 1 ? ne*(Zeff - 1)/(Zimp*(Zimp-1)) : zero(ne)
-    ni = max(ne - Zimp*nimp,zero(ne))
+    tau_s = slowing_down_time(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
+    Ec = critical_energy(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
 
-    lnΔ_e =     lnΔ_ei(ne, Te*1e3, ni, Ti*1e3; mu=b_amu, Z=Zi)
-    lnΔ_i_i =   lnΔ_ii(ne, Te*1e3, vb/c0; mu1=th_amu, mu2=b_amu, Z1=Zi, Z2=Zb)
-    lnΔ_i_imp = lnΔ_ii(ne, Te*1e3, vb/c0; mu1=imp_amu, mu2=b_amu, Z1=Zimp, Z2=Zb)
-
-    # Calculate Slowing down time and critical energy/velocity
-    # Heating of toroidal plasmas by neutral injection: T H Stix 1972 Plasma Phys. 14 367
-    avg_cmr = (lnΔ_i_i*ni*(Zi^2/th_amu) + lnΔ_i_imp*nimp*(Zimp^2/imp_amu))/(ne*lnΔ_e)
-    Ec = 14.8 * b_amu * Te * avg_cmr^(2/3)
-    tau_s = 6.27e8 * b_amu*((Te*1e3)^1.5)/(ne*lnΔ_e*Zb^2)
     vc = sqrt(2*(e0*Ec*1e3)/m_b)
     vc3 = vc^3
 
     t_b = tau_s*log((vb3+vc3)/vc3)/3
 
-    beta = (m_th*Zeff)/(2*m_b)
+    beta = (m_i*Zeff)/(2*m_b)
     alpha = (beta/3)*(1 - p0^2)*log((1 + vc3/v3)/(1+vc3/vb3))
     g = J*tau_s*inv(v3 + vc3)*inv(sqrt(4*pi*alpha))*exp(-((p - p0)^2)/(4*alpha))
     return g/t_b
@@ -218,19 +291,19 @@ function approx_slowing_down(energy::AbstractVector, pitch::AbstractVector, E0, 
 end
 
 function _bimaxwellian(energy::S, pitch::S, T_perp::S, T_para::S;
-                      vd_para=0.0, sigma=-1, th_amu = H2_amu) where S<:Number
+                      vd_para=0.0, sigma=-1, Ai = H2_amu) where S<:Number
 
-    m_th = mass_u*th_amu
+    m_i = mass_u*Ai
 
     T_perp = T_perp*1e3*e0
     T_para = T_para*1e3*e0
-    Ed_para = (0.5*m_th*vd_para^2)
+    Ed_para = (0.5*m_i*vd_para^2)
 
     E = energy*e0*1e3
     xi = clamp(sigma*pitch,nextfloat(-1.0),prevfloat(1.0))
     J = e0*1e3
     A = sqrt(E/(pi*T_para*T_perp^2))
-    T1 = -(E*xi^2 + Ed_para - vd_para*xi*sqrt(2*m_th*E))/T_para
+    T1 = -(E*xi^2 + Ed_para - vd_para*xi*sqrt(2*m_i*E))/T_para
     T2 = -(1-xi^2)*E/T_perp
     return A*exp(T1 + T2)*J
 end

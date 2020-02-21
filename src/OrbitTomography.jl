@@ -92,7 +92,7 @@ include("transforms.jl")
 export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution
 
 include("analytic.jl")
-export lnΔ_ee, lnΔ_ei, lnΔ_ii
+export lnΔ_ee, lnΔ_ei, lnΔ_ii, slowing_down_time, critical_energy, approx_critical_energy
 export gaussian, slowing_down, approx_slowing_down, bimaxwellian, maxwellian
 
 include("basis.jl")
