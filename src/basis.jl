@@ -8,10 +8,15 @@ function construct_basis(bf, xs::Tuple, params)
     nr = prod(dims)
     nc = length(params)
     B = zeros(nr,nc)
+    w = trues(nc)
     for (i,p) in enumerate(params)
-        B[:,i] .= vec(bf(xs,p))
+        Bc = vec(bf(xs,p))
+        if sum(Bc) != 0.0
+            B[:,i] .= vec(bf(xs,p))
+            w[i] = true
+        end
     end
-    return Basis(dims,B)
+    return Basis(dims,B[:,w])
 end
 
 function construct_basis(bf, xs, params)

@@ -177,28 +177,33 @@ function approx_critical_energy(ne, Te, Zeff; correction_factor = 1.0,
     return Ec
 end
 
-function _slowing_down(E::T, E0::T, P::Vector, P0::Vector;
-                       tau_on = 0.0, tau_off = 1.0, tau = 1.0,
-                       Ai = H2_amu, Ab = Ai, Aimp = C6_amu,
-                       Te = 1, Ti = Te, Zeff = 1, Zi=1, Zimp=6, Zb=Zi, ne = 1) where T<:Number
-    # Te/Ti in keV; ne in cm^-3
+function _thermalization_time(v_b, v_c, tau_s)
+    vb3 = v_b^3
+    vc3 = v_c^3
+    tau_s*log((vb3 + vc3)/vc3)/3
+end
 
-    E >= E0  && return 0.0
+function thermalization_time(E0; ne = 1.0, Zeff = 1.0, Te = 1.0, Ti = Te,
+                             Ai = H2_amu, Ab = Ai, Aimp = C6_amu,
+                             Zi=1, Zimp=6, Zb=Zi, kwargs...) where T<:Number
 
     m_b = mass_u*Ab
-
-    v = sqrt(2*(e0*E*1e3)/(m_b))
-    v3 = v^3
-    vb = sqrt(2*(e0*E0*1e3)/(m_b))
-    vb3 = vb^3
-
-    J = v*((e0*1e3)/m_b)
-
+    v_b = sqrt(2*(e0*E0*1e3)/(m_b))
     tau_s = slowing_down_time(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
     Ec = critical_energy(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
+    v_c = sqrt(2*(e0*Ec*1e3)/m_b)
 
-    vc = sqrt(2*(e0*Ec*1e3)/m_b)
-    vc3 = vc^3
+    return _thermalization_time(v_b, v_c, tau_s)
+end
+
+function _slowing_down(v::T, v_b::T, v_c::T, tau_s::T, Zeff::T, P::Vector, P0::Vector;
+                       tau_on = 0.0, tau_off = 1.0, tau = 1.0) where T<:Number
+
+    v >= v_b && return zero(T)
+
+    v3 = v^3
+    vb3 = v_b^3
+    vc3 = v_c^3
 
     inv_v3vc3 = inv(v3 + vc3)
     u1 = v3/vb3
@@ -208,9 +213,9 @@ function _slowing_down(E::T, E0::T, P::Vector, P0::Vector;
     if tau_on > tau_off
         tau_off = Inf
     end
-    t_b = tau_s*log((vb3+vc3)/vc3)/3
+    t_b = _thermalization_time(v_b, v_c, tau_s)
     t_0 = tau_on*t_b
-    t_th = tau_s*log(u2)/3
+    t_th = tau_s*log(u2)/3 # threshold time
     t_1 = tau_off*t_b - t_0
     t = tau*t_b - t_0
 
@@ -220,7 +225,7 @@ function _slowing_down(E::T, E0::T, P::Vector, P0::Vector;
         return zero(T)
     end
     lex = _slowing_down_legendre_expansion(u, P, P0)
-    g = max(J*S*(tau_s/(v3+vc3))*lex,zero(T))/t_b
+    g = max(S*tau_s*inv_v3vc3*lex,zero(T))/t_b
 end
 
 function _slowing_down(E::T, p::T, E0::T, p0::T, nterms; kwargs...) where T<:Number
@@ -229,62 +234,95 @@ function _slowing_down(E::T, p::T, E0::T, p0::T, nterms; kwargs...) where T<:Num
     _slowing_down(E, E0, P, P0; kwargs...)
 end
 
-function slowing_down(energy::AbstractVector, pitch::AbstractVector, E0, p0; nterms=20, kwargs...)
+function slowing_down(energy::AbstractVector, pitch::AbstractVector, E0, p0; nterms=50,
+                      ne = 1.0, Zeff = 1.0, Te = 1.0, Ti = Te,
+                      Ai = H2_amu, Ab = Ai, Aimp = C6_amu,
+                      Zi=1, Zimp=6, Zb=Zi, kwargs...) where T<:Number
 
     nenergy = length(energy)
     npitch = length(pitch)
 
-    f_slow = zeros(nenergy,npitch)
+    # Calculate quantities that do not depend on energy/pitch
+    m_b = mass_u*Ab
+    v_b = sqrt(2*(e0*E0*1e3)/(m_b))
+    tau_s = slowing_down_time(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
+    Ec = critical_energy(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
+    v_c = sqrt(2*(e0*Ec*1e3)/m_b)
+
+    # Legendre expansion at birth pitch
     P0 = legendre(p0, nterms)
+
+    f_slow = zeros(nenergy,npitch)
     for j=1:npitch
         P = legendre(pitch[j], nterms)
         for i=1:nenergy
-            f_slow[i,j] = _slowing_down(energy[i], E0, P, P0; kwargs...)
+            v = sqrt(2*(e0*energy[i]*1e3)/(m_b))
+            J = v*((e0*1e3)/m_b)
+            f_slow[i,j] = J*_slowing_down(v, v_b, v_c, tau_s, Zeff, P, P0; kwargs...)
         end
     end
 
     return f_slow
 end
 
-function _approx_slowing_down(E::T, p::T, E0::T, p0::T;
-                       Ai = H2_amu, Ab = Ai, Aimp = C6_amu,
-                       Te = 1, Ti = Te, Zeff = 1, Zi=1, Zimp=6, Zb=Zi, ne = 1) where T<:Number
-    # Te/Ti in keV; ne in cm^-3
+function _approx_slowing_down(v, v_b, v_c, p::T, p0::T, Zeff::T, tau_s::T, mi_mb::T;
+                             tau = 1.0, tau_off=1.0, tau_on = 0.0) where T<:Number
 
-    E >= E0  && return 0.0
+    v >= v_b && return 0.0
 
-    m_b = mass_u*Ab
-    m_i = mass_u*Ai
-
-    v = sqrt(2*(e0*E*1e3)/(m_b))
     v3 = v^3
-    vb = sqrt(2*(e0*E0*1e3)/(m_b))
-    vb3 = vb^3
+    vb3 = v_b^3
+    vc3 = v_c^3
 
-    J = v*((e0*1e3)/m_b)
+    inv_v3vc3 = inv(v3 + vc3)
+    u1 = v3/vb3
+    u2 = (vb3 + vc3)*inv_v3vc3
+    u = (u1*u2)^(Zeff/6)
 
-    tau_s = slowing_down_time(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
-    Ec = critical_energy(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
+    if tau_on > tau_off
+        tau_off = Inf
+    end
+    t_b = _thermalization_time(v_b, v_c, tau_s)
+    t_0 = tau_on*t_b
+    t_th = tau_s*log(u2)/3 # threshold time
+    t_1 = tau_off*t_b - t_0
+    t = tau*t_b - t_0
 
-    vc = sqrt(2*(e0*Ec*1e3)/m_b)
-    vc3 = vc^3
+    S = min(t,t_b,t_1)/t_b
+    U = heaviside(t - t_th) - heaviside(t - t_1 - t_th)
+    if U == 0
+        return zero(T)
+    end
 
-    t_b = tau_s*log((vb3+vc3)/vc3)/3
-
-    beta = (m_i*Zeff)/(2*m_b)
+    beta = mi_mb*Zeff/2
     alpha = (beta/3)*(1 - p0^2)*log((1 + vc3/v3)/(1+vc3/vb3))
-    g = J*tau_s*inv(v3 + vc3)*inv(sqrt(4*pi*alpha))*exp(-((p - p0)^2)/(4*alpha))
-    return g/t_b
+    g = tau_s*inv_v3vc3*inv(sqrt(4*pi*alpha))*exp(-((p - p0)^2)/(4*alpha))
+    return g*S*U
 end
 
-function approx_slowing_down(energy::AbstractVector, pitch::AbstractVector, E0, p0; kwargs...)
+function approx_slowing_down(energy::AbstractVector, pitch::AbstractVector, E0, p0;
+                      ne = 1.0, Zeff = 1.0, Te = 1.0, Ti = Te,
+                      Ai = H2_amu, Ab = Ai, Aimp = C6_amu,
+                      Zi=1, Zimp=6, Zb=Zi, kwargs...) where T<:Number
+
+    nenergy = length(energy)
+    npitch = length(pitch)
+
+    # Calculate quantities that do not depend on energy/pitch
+    m_b = mass_u*Ab
+    v_b = sqrt(2*(e0*E0*1e3)/(m_b))
+    tau_s = slowing_down_time(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
+    Ec = critical_energy(ne, Te, Ti, Zeff; Ai = Ai, Aimp=Aimp, Ab = Ab, Zi=Zi, Zimp=Zimp, Zb=Zb)
+    v_c = sqrt(2*(e0*Ec*1e3)/m_b)
 
     nenergy = length(energy)
     npitch = length(pitch)
 
     f_slow = zeros(nenergy,npitch)
     for j=1:npitch, i=1:nenergy
-        f_slow[i,j] = _approx_slowing_down(energy[i],pitch[j], E0, p0; kwargs...)
+        v = sqrt(2*(e0*energy[i]*1e3)/(m_b))
+        J = v*((e0*1e3)/m_b)
+        f_slow[i,j] = J*_approx_slowing_down(v, v_b, v_c, pitch[j], p0, Zeff, tau_s, Ai/Ab; kwargs...)
     end
 
     return f_slow
