@@ -526,6 +526,14 @@ function compute_covariance_matrix(orbs, Js, Σ_inv, atol, minval, pool::Abstrac
 end
 
 #1-arg Covariance
+"""
+    get_covariance_matrix(M,orbits,sigma)
+    get_covariance_matrix(M,orbits,sigma,Js,sparse=true,atol=1e-5,distributed=true)
+
+Calculate the covariance matrix for the orbits. Use the correlation lengths for the energy, pitch, R and Z provided in sigma.
+If provided, use the pre-calculated Jacobian Js to speed up computation, return a sparse matrix if sparse=true, use atol 
+for the precision in computing the covariance between two orbits and use parallel computation if distributed=true.
+"""
 function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::AbstractVector;
                                Js::Vector{Vector{Float64}} = Vector{Float64}[],
                                sparse::Bool = false, atol::Float64 = 1e-3,
@@ -534,7 +542,7 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma
     n = length(orbits)
     ns = length.(orbits)
     ts = [range(0.0, 1.0, length=nn) for nn in ns]
-    orbs = [OrbitSpline(o) for o in orbits]
+    orbs = [OrbitSpline(o) for o in orbits] # For more info on OrbitSpline, see orbits.jl
 
     if isempty(Js)
         J = Array{Vector{Float64}}(undef, n)
@@ -656,6 +664,14 @@ function compute_covariance_matrix(orbs1, Js1, orbs2, Js2, Σ_inv, atol, minval,
 end
 
 #2-arg Covariance
+"""
+    get_covariance_matrix(M,orbits_1,orbits_2,sigma)
+    get_covariance_matrix(M,orbits_1,orbits_2,sigma,Js_1=J1,Js_2=J2,sparse=true,atol=1e-5,distributed=true)
+
+Calculate the covariance between orbits_1 and orbits_2. The number of rows of the resulting covariance matrix 
+will be equal to length(orbits_1) and the number of columns will be equal to length(orbits_2). If provided, use 
+pre-calculated jacobians. See get_covariance_matrix() #1-arg Covariance for further info.
+"""
 function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::AbstractVector;
                                 Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
                                 Js_2::Vector{Vector{Float64}} = Vector{Float64}[],

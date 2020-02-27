@@ -1,4 +1,11 @@
 # --- FIDASIMSpectra Helper Functions ---
+"""
+    split_spectra(myFIDASIMSpectra)
+
+Split FIDASIM spectra into many spectra, according to orbit class. Orbit class is
+merely a unique orbit (unique EPR coordinate). The returned array should allow the user to 
+manipulate each array element (spectra) with apply_instrumental! etc.
+"""
 function split_spectra(s::FIDASIMSpectra)
     (length(size(s.fida)) == 2) && (length(size(s.pfida)) == 2) && return s
 
@@ -40,6 +47,11 @@ function Base.hcat(x::Zeros{T,3}...) where T <: Real
     return Zeros(size(x[1])[1],n,size(x[1])[3])
 end
 
+"""
+    merge_spectra(FIDASIMSpectra1,FIDASIMSpectra2,...)
+
+Merge many FIDASIM spectra into one.
+"""
 function merge_spectra(s::FIDASIMSpectra...)
     all(x -> length(size(x.fida)) == length(size(s[1].fida)), s) || error("Incompatible fida sizes")
     all(x -> length(x.lambda) == length(s[1].lambda), s) || error("Incompatible lambda sizes")
