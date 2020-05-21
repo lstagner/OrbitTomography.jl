@@ -224,3 +224,44 @@ function ion_density(s::FIDASIMPlasmaParameters, imp)
     denimp = impurity_density(s, imp)
     return s.dene .- imp*denimp
 end
+
+
+# --- FIDASIM Velocity-space Weight Functions Helper Functions ---
+function apply_instrumental!(s::FIDAWeightFunction, instr, dL)
+    for ie=1:length(s.energy), ip=1:length(s.pitch)
+        k = kernel(s.lambda,instr,dL)
+        length(eachindex(k)) == 0 && continue
+        s.W[:,ie,ip] .= imfilter(s.W[:,ie,ip], k)
+    end
+end
+
+function apply_instrumental!(s::FIDAWeightFunction, instr)
+    dL = abs(s.lambda[2]-s.lambda[1])
+    apply_instrumental!(s, instr, dL)
+end
+
+function weight_matrix(s::FIDAWeightFunction, lambda)
+    nenergy = length(s.energy)
+    npitch = length(s.pitch)
+    nL = length(lambda)
+    WW = zeros(nL,nenergy,npitch)
+    for ie=1:nenergy, ip=1:npitch
+        itp = LinearInterpolation(s.lambda,s.W[:,ie,ip])
+        WW[:,ie,ip] .= itp.(lambda)
+    end
+
+    return reshape(WW,(nL,nenergy*npitch))
+end
+
+function make_synthetic_weight_matrix(w::FIDAWeightFunction, s::FIDASIMSpectra, ic; fida_fraction=0.95,dL=0.1)
+    bes = s.full[:,ic] .+ s.half[:,ic] .+ s.third[:,ic] .+ s.dcx[:,ic] .+ s.halo[:,ic]
+    fida = s.fida[:,ic]
+    bes_itp = LinearInterpolation(s.lambda,bes)
+    fida_itp = LinearInterpolation(s.lambda,fida)
+
+    lambda = range(extrema(w.lambda)...,step=dL)
+    f = fida_itp.(lambda)
+    b = bes_itp.(lambda)
+    ww = (f./(f .+ b)) .> fida_fraction
+    return weight_matrix(w,lambda[ww])
+end
