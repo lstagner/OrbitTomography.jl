@@ -510,7 +510,7 @@ function FIDASIMPlasmaParameters(filename::String)
         phi = [0.0]
     end
 
-    mask = read(fp["mask"])
+    mask = Int16.(read(fp["mask"]))
     te = read(fp["te"])
     ti = read(fp["ti"])
     dene = read(fp["dene"])
