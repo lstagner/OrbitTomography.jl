@@ -212,7 +212,7 @@ function get_orbel_volume(og::OrbitGrid, equidistant::Bool)
                         # Assume edge orbit-element volume to be same as next-to-edge
                         dRm = abs(og.r[end]-og.r[end-1])
                     else
-                        dRm = abs(og.r[Rmi+1]-og.energy[Rmi])
+                        dRm = abs(og.r[Rmi+1]-og.r[Rmi])
                     end
 
                     dO[Ei, pmi, Rmi] = dE*dpm*dRm
