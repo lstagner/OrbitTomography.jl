@@ -541,7 +541,7 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma
                                batch_size = 0, kwargs...)
     n = length(orbits)
     ns = length.(orbits)
-    ts = [range(0.0, 1.0, length=nn) for nn in ns]
+    
     orbs = [OrbitSpline(o) for o in orbits] # For more info on OrbitSpline, see orbits.jl
 
     if isempty(Js)
@@ -554,6 +554,7 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma
     else
         J = Js
     end
+    ts = [range(0.0, 1.0, length=nn) for nn in length.(J)]
     Jis = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J,ts)]
 
     Σ_inv = S44(inv(Diagonal(sigma.^2)))
@@ -683,7 +684,7 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orb
 
     n1 = length(orbits_1)
     ns1 = length.(orbits_1)
-    ts1 = [range(0.0, 1.0, length=nn) for nn in ns1]
+    
     orbs1 = [OrbitSpline(o) for o in orbits_1]
 
     if isempty(Js_1)
@@ -696,11 +697,12 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orb
     else
         J1 = Js_1
     end
+    ts1 = [range(0.0, 1.0, length=nn) for nn in length.(J1)]
     Jis1 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J1,ts1)]
 
     n2 = length(orbits_2)
     ns2 = length.(orbits_2)
-    ts2 = [range(0.0, 1.0, length=nn) for nn in ns2]
+    
     orbs2 = [OrbitSpline(o) for o in orbits_2]
 
     if isempty(Js_2)
@@ -713,6 +715,7 @@ function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orb
     else
         J2 = Js_2
     end
+    ts2 = [range(0.0, 1.0, length=nn) for nn in length.(J2)]
     Jis2 = [make_jacobian_spline(jj,tt) for (jj, tt) in zip(J2,ts2)]
 
     if distributed
