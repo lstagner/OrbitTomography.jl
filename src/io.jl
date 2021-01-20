@@ -71,7 +71,7 @@ struct FIDASIMGuidingCenterFunction <: AbstractDistribution
     nfast::Float64
 end
 
-function FIDASIMGuidingCenterFunction(f::HDF5.HDF5File)
+function FIDASIMGuidingCenterFunction(f::HDF5.File)
 
     nr = read(f["nr"])
     nz = read(f["nz"])
@@ -111,7 +111,7 @@ struct FIDASIMGuidingCenterParticles <: AbstractDistribution
     nfast::Float64
 end
 
-function FIDASIMGuidingCenterParticles(f::HDF5.HDF5File)
+function FIDASIMGuidingCenterParticles(f::HDF5.File)
 
     npart = read(f["nparticle"])
     nclass = read(f["nclass"])
@@ -145,7 +145,7 @@ struct FIDASIMFullOrbitParticles <: AbstractDistribution
     nfast::Float64
 end
 
-function FIDASIMFullOrbitParticles(f::HDF5.HDF5File)
+function FIDASIMFullOrbitParticles(f::HDF5.File)
 
     npart = read(f["nparticle"])
     nclass = read(f["nclass"])
