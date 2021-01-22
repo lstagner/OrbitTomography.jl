@@ -1,4 +1,11 @@
 # --- FIDASIMSpectra Helper Functions ---
+"""
+    split_spectra(myFIDASIMSpectra)
+
+Split FIDASIM spectra into many spectra, according to orbit class. Orbit class is
+merely a unique orbit (unique EPR coordinate). The returned array should allow the user to 
+manipulate each array element (spectra) with apply_instrumental! etc.
+"""
 function split_spectra(s::FIDASIMSpectra)
     (length(size(s.fida)) == 2) && (length(size(s.pfida)) == 2) && return s
 
@@ -40,6 +47,11 @@ function Base.hcat(x::Zeros{T,3}...) where T <: Real
     return Zeros(size(x[1])[1],n,size(x[1])[3])
 end
 
+"""
+    merge_spectra(FIDASIMSpectra1,FIDASIMSpectra2,...)
+
+Merge many FIDASIM spectra into one.
+"""
 function merge_spectra(s::FIDASIMSpectra...)
     all(x -> length(size(x.fida)) == length(size(s[1].fida)), s) || error("Incompatible fida sizes")
     all(x -> length(x.lambda) == length(s[1].lambda), s) || error("Incompatible lambda sizes")
@@ -174,6 +186,37 @@ function sample_f(f::Array{T,N}, w, x, y, z; n=100) where {T,N}
     return ww, xx, yy, zz
 end
 
+"""
+    sample_f(fr,dvols,energy,pitch,R,Z)
+    sample_f(-||-,n=100_000)
+
+Unlike regular sample_f, take non-equidistant 4D grid-points into consideration.
+"""
+function sample_f(fr::Array{T,N}, dvols::AbstractArray, w, x, y, z; n=100_000) where {T,N}
+
+    inds = sample_array(fr.*dvols,n)
+
+    dw = vcat(abs.(diff(w)),abs(w[end]-w[end-1]))
+    dx = vcat(abs.(diff(x)),abs(x[end]-x[end-1]))
+    dy = vcat(abs.(diff(y)),abs(y[end]-y[end-1]))
+    dz = vcat(abs.(diff(z)),abs(z[end]-z[end-1]))
+
+    r = rand(N,n) .- 0.5
+    xx = zeros(n)
+    yy = zeros(n)
+    zz = zeros(n)
+    ww = zeros(n)
+
+    @inbounds for i=1:n
+        ww[i] = max(w[inds[1,i]] + r[1,i]*dw[inds[1,i]], 0.0)
+        xx[i] = x[inds[2,i]] + r[2,i]*dx[inds[2,i]]
+        yy[i] = y[inds[3,i]] + r[3,i]*dy[inds[3,i]]
+        zz[i] = z[inds[4,i]] + r[4,i]*dz[inds[4,i]]
+    end
+
+    return ww, xx, yy, zz
+end
+
 function fbm2mc(d::FIDASIMGuidingCenterFunction; n=1_000_000)
     fr = d.f .* reshape(d.r,(1,1,length(d.r),1))
 
@@ -183,6 +226,52 @@ function fbm2mc(d::FIDASIMGuidingCenterFunction; n=1_000_000)
     class = fill(1,n)
 
     return FIDASIMGuidingCenterParticles(n,nclass,class,weight,r,z,energy,pitch,d.nfast)
+end
+
+"""
+    fbm2mc(F_ps, equidistant)
+    fbm2mc(-||-, n=100_000)
+
+Unlike regular fbm2mc, take non-equidistant 4D grid-points into consideration if equidistant=false. 
+Assume 4D grid to be rectangular.
+"""
+function fbm2mc(d::FIDASIMGuidingCenterFunction, equidistant::Bool; n=1_000_000)
+
+    fr = d.f .* reshape(d.r,(1,1,length(d.r),1))
+    if equidistant
+        energy, pitch, r, z = sample_f(fr,d.energy,d.pitch,d.r,d.z,n=n)
+    else
+        dvols = get4Dvols(d.energy,d.pitch,d.r,d.z)
+        energy, pitch, r, z = sample_f(fr,dvols,d.energy,d.pitch,d.r,d.z,n=n)
+    end
+
+    weight = fill(d.nfast/n,n)
+    nclass = 1
+    class = fill(1,n)
+
+    return FIDASIMGuidingCenterParticles(n,nclass,class,weight,r,z,energy,pitch,d.nfast)
+end
+
+"""
+    get4DDiffs(E, p, R, Z)
+
+Calculate and return 4D-arrays of the diffs of particle-space coordinates. Assume edge diff to be same as next-to-edge diff.
+"""
+function get4DDiffs(E, p, R, Z)
+    dR = vcat(abs.(diff(R)),abs(R[end]-R[end-1]))
+    dR = reshape(dR,1,1,length(dR),1)
+    dR4D = repeat(dR,length(E),length(p),1,length(Z))
+    dZ = vcat(abs.(diff(Z)),abs(Z[end]-Z[end-1]))
+    dZ = reshape(dZ,1,1,1,length(dZ))
+    dZ4D = repeat(dZ,length(E),length(p),length(R),1)
+    dE = vcat(abs.(diff(E)),abs(E[end]-E[end-1]))
+    dE = reshape(dE,length(dE),1,1,1)
+    dE4D = repeat(dE,1,length(p),length(R),length(Z))
+    dp = vcat(abs.(diff(p)),abs(p[end]-p[end-1]))
+    dp = reshape(dp,1,length(dp),1,1)
+    dp4D = repeat(dp,length(E),1,length(R),length(Z))
+
+    return dE4D, dp4D, dR4D, dZ4D
 end
 
 

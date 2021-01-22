@@ -187,7 +187,10 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
     f_eprz = zeros(nenergy,npitch,nr,nz)
 
     if warmstart && isfile(file) && (filesize(file) != 0)
-        @load file f_eprz last_ind
+        progress_file = jldopen(file,false,false,false,IOStream)
+        f_eprz = progress_file["f_eprz"]
+        last_ind = progress_file["last_ind"]
+        close(progress_file)
     else
         last_ind = inds[1]
     end
@@ -227,7 +230,10 @@ function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vecto
         f_ep[w] .= 0.0
         f_eprz[:,:,i,j] .= f_ep
         if checkpoint
-            @save file f_eprz last_ind
+            progress_file = jldopen(file, true,true,true,IOStream)
+            write(progress_file,"f_eprz",f_eprz)
+            write(progress_file,"last_ind",last_ind)
+            close(progress_file)
         end
         last_ind = I
     end

@@ -176,6 +176,103 @@ function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, o
 
 end
 
+"""
+    get_orbel_volume(myOrbitGrid, equidistant)
+
+Get the orbit element volume of this specific orbit-grid. 
+If equidistant=false, then return a 3D array with all the orbit volumes.
+Otherwise, just a scalar.
+"""
+function get_orbel_volume(og::OrbitGrid, equidistant::Bool)
+
+    if equidistant
+        dRm = abs(og.r[2]-og.r[1])
+        dE = abs(og.energy[2]-og.energy[1])
+        dpm = abs(og.pitch[2]-og.pitch[1])
+        dO = dE*dpm*dRm
+        return dO
+    else
+        dO = zeros(length(og.energy), length(og.pitch), length(og.r))
+        for Ei=1:length(og.energy)
+            if Ei==length(og.energy)
+                # Assume edge orbit-element volume to be same as next-to-edge
+                dE = abs(og.energy[end]-og.energy[end-1])
+            else
+                dE = abs(og.energy[Ei+1]-og.energy[Ei])
+            end
+            for pmi=1:length(og.pitch)
+                if pmi==length(og.pitch)
+                    # Assume edge orbit-element volume to be same as next-to-edge
+                    dpm = abs(og.pitch[end]-og.pitch[end-1])
+                else
+                    dpm = abs(og.pitch[pmi+1]-og.pitch[pmi])
+                end
+                for Rmi=1:length(og.r)
+                    if Rmi==length(og.r)
+                        # Assume edge orbit-element volume to be same as next-to-edge
+                        dRm = abs(og.r[end]-og.r[end-1])
+                    else
+                        dRm = abs(og.r[Rmi+1]-og.r[Rmi])
+                    end
+
+                    dO[Ei, pmi, Rmi] = dE*dpm*dRm
+                end
+            end
+        end
+
+        return dO
+    end
+end
+
+"""
+    get4Dvols(E, p, R, Z)
+
+Calculate the volume of all hyper-voxels pertaining to the 4D grid. Assume the hyper-voxels pertaining to the
+upper-end (edge) grid-points have the same volumes as the hyper-voxels just inside of them. Return a 4D array, containing all the hyper-voxel
+volumes. Let the 4D array have size()=(length(E), length(p), length(R), length(Z)). Assumes a rectangular 4D grid.
+"""
+function get4Dvols(E, p, R, Z)
+
+    # Safety-check to ensure vectors
+    if !(1==length(size(E))==length(size(p))==length(size(R))==length(size(Z)))
+        throw(ArgumentError("Energy, pitch, R, Z inputs are not all vectors. Please correct and re-try."))
+    end
+
+    vols = zeros(length(E), length(p), length(R), length(Z))
+    for Ei=1:length(E)
+        if Ei==length(E)
+            dE = abs(E[end]-E[end-1])
+        else
+            dE = abs(E[Ei+1]-E[Ei])
+        end
+        for pi=1:length(p)
+            if pi==length(p)
+                dp = abs(p[end]-p[end-1])
+            else
+                dp = abs(p[pi+1]-p[pi])
+            end
+            for Ri=1:length(R)
+                if Ri==length(R)
+                    dR = abs(R[end]-R[end-1])
+                else
+                    dR = abs(R[Ri+1]-R[Ri])
+                end
+                for Zi=1:length(Z)
+                    if Zi==length(Z)
+                        dZ = abs(Z[end]-Z[end-1])
+                    else
+                        dZ = abs(Z[Zi+1]-Z[Zi])
+                    end
+
+                    vols[Ei,pi,Ri,Zi] = dE*dp*dR*dZ
+                end
+            end
+        end
+    end
+
+    return vols
+end
+
 function orbit_matrix(M::AxisymmetricEquilibrium, grid::OrbitGrid, energy, pitch, r, z; kwargs...)
     nenergy = length(energy)
     npitch = length(pitch)
@@ -248,6 +345,24 @@ function map_orbits(grid::OrbitGrid, f::Vector)
     end
     dorb = abs((grid.r[2]-grid.r[1])*(grid.energy[2]-grid.energy[1])*(grid.pitch[2]-grid.pitch[1]))
     return [i == 0 ? zero(f[1]) : f[i]/(grid.counts[i]*dorb) for i in grid.orbit_index]
+end
+
+"""
+    map_orbits(og, f, equidistant)
+
+Unlike regular map_orbits, take non-equidistant 3D grid-points into consideration.
+"""
+function map_orbits(grid::OrbitGrid, f::Vector, os_equidistant::Bool)
+    if length(grid.counts) != length(f)
+        throw(ArgumentError("Incompatible sizes"))
+    end
+    dorb = abs((grid.r[2]-grid.r[1])*(grid.energy[2]-grid.energy[1])*(grid.pitch[2]-grid.pitch[1]))
+
+    if os_equidistant
+        return [i == 0 ? zero(f[1]) : f[i]/(grid.counts[i]*dorb) for i in grid.orbit_index]
+    else
+        return [i == 0 ? zero(f[1]) : f[i]/(grid.counts[i]*dorb[i]) for i in grid.orbit_index]
+    end
 end
 
 function orbit_index(grid::OrbitGrid, o::EPRCoordinate; nearest=false)
@@ -390,6 +505,31 @@ end
 function fbm2orbit(M::AxisymmetricEquilibrium,d::FIDASIMGuidingCenterFunction; GCP=GCDeuteron, n=1_000_000, kwargs...)
     dmc = fbm2mc(d,n=n)
     return mc2orbit(M, dmc, GCP; kwargs...)
+end
+
+"""
+    removeBadIndices!(dmc, energy, pitch, R, Z)
+    removeBadIndices!(-||-, verbose=true)
+
+Remove bad samples from the dmc (FIDASIMGuidingCenterParticles). Samples that might have ended up outside of the original
+(E,p,R,Z)-ranges.
+"""
+function removeBadIndices!(dmc, energy, pitch, R, Z; verbose=false)
+    if verbose
+        println("Removing bad samples... ")
+    end
+    bad_indices_E = findall(x-> x<=minimum(energy) || x>=maximum(energy),dmc.energy)
+    bad_indices_p = findall(x-> x<=minimum(pitch) || x>=maximum(pitch),dmc.pitch)
+    bad_indices_R = findall(x-> x<=minimum(R) || x>=maximum(R),dmc.r)
+    bad_indices_Z = findall(x-> x<=minimum(Z) || x>=maximum(Z),dmc.z)
+    bad_indices_tot = sort!(unique(vcat(bad_indices_E,bad_indices_p,bad_indices_R,bad_indices_Z)))
+    deleteat!(dmc.energy,bad_indices_tot)
+    deleteat!(dmc.pitch,bad_indices_tot)
+    deleteat!(dmc.r,bad_indices_tot)
+    deleteat!(dmc.z,bad_indices_tot)
+    deleteat!(dmc.weight,bad_indices_tot)
+    deleteat!(dmc.class,bad_indices_tot)
+    dmc = FIDASIMGuidingCenterParticles(length(dmc.energy), length(unique(dmc.class)), dmc.class, dmc.weight, dmc.r, dmc.z, dmc.energy, dmc.pitch, sum(dmc.weight))
 end
 
 struct OrbitSpline{T<:Function}
