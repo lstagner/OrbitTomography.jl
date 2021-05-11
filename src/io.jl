@@ -259,7 +259,7 @@ each distribution file should have a reasonable size to be read by FIDASIM. So i
 15 .h5 files for example, you will need to do 15 FIDASIM runs and then combine the 15 output spectras into one. 
 This can be done in numerous ways, taking care due to the likely large file amount of memory required.
 """
-function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; filename="orbits.h5",time=0.0,ntot=1e19,chunksize=0)
+function write_fidasim_distribution(M::AbstractEquilibrium, orbits::Array; filename="orbits.h5",time=0.0,ntot=1e19,chunksize=0)
 
     if chunksize == 0
         orbs = (orbits,)
@@ -296,7 +296,7 @@ function write_fidasim_distribution(M::AxisymmetricEquilibrium, orbits::Array; f
             end
 
             file["energy","shuffle",(),"chunk",(npart),"compress",4] = vcat((o.path.energy for o in oo)...)
-            file["pitch","shuffle",(),"chunk",(npart),"compress",4] = vcat((M.sigma*o.path.pitch for o in oo)...)
+            file["pitch","shuffle",(),"chunk",(npart),"compress",4] = vcat((B0Ip_sign(M)*o.path.pitch for o in oo)...)
             file["r","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.r for o in oo)...)
             file["z","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.z for o in oo)...)
             file["class","shuffle",(),"chunk",(npart),"compress",4] = vcat((fill(i,length(o.path)) for (i,o) in enumerate(oo))...)

@@ -13,7 +13,7 @@ function Base.show(io::IO, og::OrbitGrid)
     print(io, "OrbitGrid: $(length(og.energy))×$(length(og.pitch))×$(length(og.r)):$(length(og.counts))")
 end
 
-function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
+function orbit_grid(M::AbstractEquilibrium, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
                     q = 1, amu = H2_amu, kwargs...)
 
     nenergy = length(eo)
@@ -70,7 +70,7 @@ function orbit_grid(M::AxisymmetricEquilibrium, eo::AbstractVector, po::Abstract
 
 end
 
-function segment_orbit_grid(M::AxisymmetricEquilibrium, orbit_grid::OrbitGrid, orbits::Vector;
+function segment_orbit_grid(M::AbstractEquilibrium, orbit_grid::OrbitGrid, orbits::Vector;
                         norbits=1000, combine=(length(orbits[1].path) != 0),
                         q = 1, amu = H2_amu, kwargs...)
 
@@ -273,7 +273,7 @@ function get4Dvols(E, p, R, Z)
     return vols
 end
 
-function orbit_matrix(M::AxisymmetricEquilibrium, grid::OrbitGrid, energy, pitch, r, z; kwargs...)
+function orbit_matrix(M::AbstractEquilibrium, grid::OrbitGrid, energy, pitch, r, z; kwargs...)
     nenergy = length(energy)
     npitch = length(pitch)
     nr = length(r)
@@ -294,7 +294,7 @@ function orbit_matrix(M::AxisymmetricEquilibrium, grid::OrbitGrid, energy, pitch
                 gcp = GCParticle(energy[ie],pitch[ip],r[ir],z[iz])
                 o = get_orbit(M,gcp;store_path=false,kwargs...)
                 Rcol = spzeros(norbits)
-                if !(o.class in (:lost,:incomplete)) && o.coordinate.r > M.axis[1]
+                if !(o.class in (:lost,:incomplete)) && o.coordinate.r > magnetic_axis(M)[1]
                     oi = orbit_index(grid,o.coordinate)
                     (oi > 0) && (Rcol[oi] = 1.0)
                 end
@@ -480,7 +480,7 @@ function combine_orbits(orbits)
     return Orbit(cc, class, tau_p, tau_t, path)
 end
 
-function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles, GCP::T;  kwargs...) where T <: Function
+function mc2orbit(M::AbstractEquilibrium, d::FIDASIMGuidingCenterParticles, GCP::T;  kwargs...) where T <: Function
     p = Progress(d.npart)
     channel = RemoteChannel(()->Channel{Bool}(d.npart),1)
 
@@ -491,7 +491,7 @@ function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles, 
 
         @async begin
             orbs = @distributed (vcat) for i=1:d.npart
-                o = get_orbit(M,GCP(d.energy[i],M.sigma*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
+                o = get_orbit(M,GCP(d.energy[i],B0Ip_sign(M)*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
                 put!(channel,true)
                 o.coordinate
             end
@@ -502,7 +502,7 @@ function mc2orbit(M::AxisymmetricEquilibrium, d::FIDASIMGuidingCenterParticles, 
     return fetch(t)
 end
 
-function fbm2orbit(M::AxisymmetricEquilibrium,d::FIDASIMGuidingCenterFunction; GCP=GCDeuteron, n=1_000_000, kwargs...)
+function fbm2orbit(M::AbstractEquilibrium,d::FIDASIMGuidingCenterFunction; GCP=GCDeuteron, n=1_000_000, kwargs...)
     dmc = fbm2mc(d,n=n)
     return mc2orbit(M, dmc, GCP; kwargs...)
 end

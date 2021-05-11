@@ -5,7 +5,7 @@ struct EPDensity{T<:AbstractMatrix,S<:AbstractVector}
     pitch::S
 end
 
-function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vector, r, z;
+function local_distribution(M::AbstractEquilibrium, grid::OrbitGrid, f::Vector, r, z;
                             energy=1.0:80.0, pitch=-1.0:0.02:1.0, nearest=false,kwargs...)
     f3d = map(grid,f)
     nenergy = length(energy)
@@ -41,7 +41,7 @@ function local_distribution(M::AxisymmetricEquilibrium, grid::OrbitGrid, f::Vect
     return EPDensity(d,detJ,energy,pitch)
 end
 
-function local_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f, orbs, sigma, r, z;
+function local_distribution(M::AbstractEquilibrium, OS::OrbitSystem, f, orbs, sigma, r, z;
                             Js=Vector{Vector{Float64}}[],
                             energy=range(1.0,80.0,length=25),
                             pitch=range(-0.99,0.99,length=25),
@@ -90,12 +90,12 @@ struct RZDensity{T<:AbstractMatrix,S<:AbstractVector}
     z::S
 end
 
-function rz_profile(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs, sigma;
+function rz_profile(M::AbstractEquilibrium, OS::OrbitSystem, f::Vector, orbs, sigma;
                             Js=Vector{Vector{Float64}}[],
                             energy=range(1.0,80.0,length=25),
                             pitch=range(-0.99,0.99,length=25),
-                            r = range(extrema(M.r)...,length=25),
-                            z = range(extrema(M.z)...,length=25),
+                            r = range(limits(M)[1]...,length=25),
+                            z = range(limits(M)[2]...,length=25),
                             distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
                             covariance=:local, norms=S3(1.0,1.0,1.0),
                             checkpoint=true, warmstart=false,file="rz_progress.jld2", kwargs...)
@@ -166,12 +166,12 @@ struct EPRZDensity{T<:AbstractArray,S<:AbstractVector}
     z::S
 end
 
-function eprz_distribution(M::AxisymmetricEquilibrium, OS::OrbitSystem, f::Vector, orbs, sigma;
+function eprz_distribution(M::AbstractEquilibrium, OS::OrbitSystem, f::Vector, orbs, sigma;
                             Js=Vector{Vector{Float64}}[],
                             energy=range(1.0,80.0,length=25),
                             pitch=range(-0.99,0.99,length=25),
-                            r = range(extrema(M.r)...,length=25),
-                            z = range(extrema(M.z)...,length=25),
+                            r = range(limits(M)[1]...,length=25),
+                            z = range(limits(M)[2]...,length=25),
                             distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
                             covariance=:local, norms=S3(1.0,1.0,1.0),
                             checkpoint=true, warmstart=false,file="eprz_progress.jld2", kwargs...)

@@ -343,7 +343,7 @@ function get_covariance(o1::OrbitSpline, J1::T, o2::OrbitSpline, J2::T, sigma::A
     return get_covariance(o1, J1, o2, J2, Σ_inv, atol)
 end
 
-function get_covariance(M::AxisymmetricEquilibrium, o, sigma;
+function get_covariance(M::AbstractEquilibrium, o, sigma;
                         J = Float64[], atol = 1e-3, kwargs...)
 
     n = length(o)
@@ -358,7 +358,7 @@ function get_covariance(M::AxisymmetricEquilibrium, o, sigma;
     return get_covariance(oi, J1i, oi, J1i, sigma, atol)
 end
 
-function get_covariance(M::AxisymmetricEquilibrium, o1, o2, sigma;
+function get_covariance(M::AbstractEquilibrium, o1, o2, sigma;
                         J1 = Float64[], J2 = Float64[], atol=1e-3, kwargs...)
 
     n1 = length(o1)
@@ -388,7 +388,7 @@ function get_covariance(M::AxisymmetricEquilibrium, o1, o2, sigma;
     return get_covariance(o1i, J1i, o2i, J2i, sigma, atol)
 end
 
-function get_covariance(M::AxisymmetricEquilibrium, c1::T, c2::T, sigma;
+function get_covariance(M::AbstractEquilibrium, c1::T, c2::T, sigma;
                          k1::Float64 = 0.0, k2::Float64 = 0.0,
                          J1 = Float64[], J2 = Float64[],
                         atol = 1e-3, kwargs...) where T <: Union{AbstractOrbitCoordinate,AbstractParticle}
@@ -397,7 +397,7 @@ function get_covariance(M::AxisymmetricEquilibrium, c1::T, c2::T, sigma;
     return get_covariance(M, o1, o2, sigma; J1 = J1, k1 = k1, J2 = J2, k2 = k2, atol = atol, kwargs...)
 end
 
-function get_correlation(M::AxisymmetricEquilibrium, o1, o2, sigma;
+function get_correlation(M::AbstractEquilibrium, o1, o2, sigma;
                          k1::Float64 = 0.0, k2::Float64 = 0.0,
                          J1 = Float64[], J2 = Float64[],
                          atol = 1e-3, kwargs...)
@@ -534,7 +534,7 @@ Calculate the covariance matrix for the orbits. Use the correlation lengths for 
 If provided, use the pre-calculated Jacobian Js to speed up computation, return a sparse matrix if sparse=true, use atol 
 for the precision in computing the covariance between two orbits and use parallel computation if distributed=true.
 """
-function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::AbstractVector;
+function get_covariance_matrix(M::AbstractEquilibrium, orbits::Vector, sigma::AbstractVector;
                                Js::Vector{Vector{Float64}} = Vector{Float64}[],
                                sparse::Bool = false, atol::Float64 = 1e-3,
                                minval::Float64 = atol, distributed = false,
@@ -584,7 +584,7 @@ function get_correlation_matrix(cov)
     return cov./(K*K')
 end
 
-function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits::Vector, sigma::AbstractVector;
+function get_correlation_matrix(M::AbstractEquilibrium, orbits::Vector, sigma::AbstractVector;
                                 Js::Vector{Vector{Float64}} = Vector{Float64}[],
                                 sparse::Bool = false, atol::Float64 = 1e-3,
                                 minval::Float64 = atol, distributed = false,
@@ -673,7 +673,7 @@ Calculate the covariance between orbits_1 and orbits_2. The number of rows of th
 will be equal to length(orbits_1) and the number of columns will be equal to length(orbits_2). If provided, use 
 pre-calculated jacobians. See get_covariance_matrix() #1-arg Covariance for further info.
 """
-function get_covariance_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::AbstractVector;
+function get_covariance_matrix(M::AbstractEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::AbstractVector;
                                 Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
                                 Js_2::Vector{Vector{Float64}} = Vector{Float64}[],
                                 sparse::Bool = false, atol::Float64 = 1e-3,
@@ -806,7 +806,7 @@ function compute_correlation_matrix(orbs1, Js1, Ks1, orbs2, Js2, Ks2, Σ_inv, at
     return sparse(Σ)
 end
 
-function get_correlation_matrix(M::AxisymmetricEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::AbstractVector;
+function get_correlation_matrix(M::AbstractEquilibrium, orbits_1::Vector, orbits_2::Vector, sigma::AbstractVector;
                                 ks_1::Vector{Float64} = Float64[],
                                 Js_1::Vector{Vector{Float64}} = Vector{Float64}[],
                                 ks_2::Vector{Float64} = Float64[],
