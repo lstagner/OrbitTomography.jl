@@ -192,85 +192,90 @@ function get_orbel_volume(og::OrbitGrid, equidistant::Bool)
         dO = dE*dpm*dRm
         return dO
     else
-        dO = zeros(length(og.energy), length(og.pitch), length(og.r))
-        for Ei=1:length(og.energy)
-            if Ei==length(og.energy)
-                # Assume edge orbit-element volume to be same as next-to-edge
-                dE = abs(og.energy[end]-og.energy[end-1])
-            else
-                dE = abs(og.energy[Ei+1]-og.energy[Ei])
-            end
-            for pmi=1:length(og.pitch)
-                if pmi==length(og.pitch)
-                    # Assume edge orbit-element volume to be same as next-to-edge
-                    dpm = abs(og.pitch[end]-og.pitch[end-1])
-                else
-                    dpm = abs(og.pitch[pmi+1]-og.pitch[pmi])
-                end
-                for Rmi=1:length(og.r)
-                    if Rmi==length(og.r)
-                        # Assume edge orbit-element volume to be same as next-to-edge
-                        dRm = abs(og.r[end]-og.r[end-1])
-                    else
-                        dRm = abs(og.r[Rmi+1]-og.r[Rmi])
-                    end
-
-                    dO[Ei, pmi, Rmi] = dE*dpm*dRm
-                end
-            end
-        end
-
-        return dO
+        return get3DVols(og.energy, og.pitch, og.r)
     end
 end
 
-"""
-    get4Dvols(E, p, R, Z)
 
-Calculate the volume of all hyper-voxels pertaining to the 4D grid. Assume the hyper-voxels pertaining to the
-upper-end (edge) grid-points have the same volumes as the hyper-voxels just inside of them. Return a 4D array, containing all the hyper-voxel
-volumes. Let the 4D array have size()=(length(E), length(p), length(R), length(Z)). Assumes a rectangular 4D grid.
 """
-function get4Dvols(E, p, R, Z)
+    get3DDiffs(E, pm, Rm)
+
+Calculate and return 3D-array of the diffs of orbit-space coordinates. Assume edge diff to be same as next-to-edge diff.
+"""
+function get3DDiffs(E, pm, Rm)
+    dE = vcat(abs.(diff(E)),abs(E[end]-E[end-1]))
+    dE = reshape(dE,length(dE),1,1)
+    dE3D = repeat(dE,1,length(pm),length(Rm))
+    dpm = vcat(abs.(diff(pm)),abs(pm[end]-pm[end-1]))
+    dpm = reshape(dpm,1,length(dpm),1)
+    dpm3D = repeat(dpm,length(E),1,length(Rm))
+    dRm = vcat(abs.(diff(Rm)),abs(Rm[end]-Rm[end-1]))
+    dRm = reshape(dRm,1,1,length(dRm))
+    dRm3D = repeat(dRm,length(E),length(pm),1)
+
+    return dE3D, dpm3D, dRm3D
+end
+
+
+"""
+    get3DVols(E, pm, Rm)
+
+This function will calculate the volume of all the hyper-voxels pertaining to the 3D grid. It assumes the hyper-voxels pertaining to the
+upper-end (edge) grid-points have the same volumes as the hyper-voxels just inside of them. It return a 3D array, containing all the hyper-voxel
+volumes. The 3D array will have size()=(length(E), length(pm), length(Rm)). The function assumes a rectangular 3D grid.
+"""
+function get3DVols(E, pm, Rm)
+
+    # Safety-check to ensure vectors
+    if !(1==length(size(E))==length(size(pm))==length(size(Rm)))
+        throw(ArgumentError("E, pm, Rm inputs are not all vectors. Please correct and re-try."))
+    end
+
+    dE3D, dpm3D, dRm3D = get3DDiffs(E, pm, Rm)
+    dvols = dE3D .*dpm3D .*dRm3D
+    return dvols
+end
+
+
+"""
+    get4DDiffs(E, p, R, Z)
+
+Calculate and return 4D-arrays of the diffs of particle-space coordinates. Assume edge diff to be same as next-to-edge diff.
+"""
+function get4DDiffs(E, p, R, Z)
+    dR = vcat(abs.(diff(R)),abs(R[end]-R[end-1]))
+    dR = reshape(dR,1,1,length(dR),1)
+    dR4D = repeat(dR,length(E),length(p),1,length(Z))
+    dZ = vcat(abs.(diff(Z)),abs(Z[end]-Z[end-1]))
+    dZ = reshape(dZ,1,1,1,length(dZ))
+    dZ4D = repeat(dZ,length(E),length(p),length(R),1)
+    dE = vcat(abs.(diff(E)),abs(E[end]-E[end-1]))
+    dE = reshape(dE,length(dE),1,1,1)
+    dE4D = repeat(dE,1,length(p),length(R),length(Z))
+    dp = vcat(abs.(diff(p)),abs(p[end]-p[end-1]))
+    dp = reshape(dp,1,length(dp),1,1)
+    dp4D = repeat(dp,length(E),1,length(R),length(Z))
+
+    return dE4D, dp4D, dR4D, dZ4D
+end
+
+"""
+    get4DVols(E, p, R, Z)
+
+This function will calculate the volume of all the hyper-voxels pertaining to the 4D grid. It assumes the hyper-voxels pertaining to the
+upper-end (edge) grid-points have the same volumes as the hyper-voxels just inside of them. It return a 4D array, containing all the hyper-voxel
+volumes. The 4D array will have size()=(length(E), length(p), length(R), length(Z)). The function assumes a rectangular 4D grid.
+"""
+function get4DVols(E, p, R, Z)
 
     # Safety-check to ensure vectors
     if !(1==length(size(E))==length(size(p))==length(size(R))==length(size(Z)))
-        throw(ArgumentError("Energy, pitch, R, Z inputs are not all vectors. Please correct and re-try."))
+        throw(ArgumentError("E, p, R, Z inputs are not all vectors. Please correct and re-try."))
     end
 
-    vols = zeros(length(E), length(p), length(R), length(Z))
-    for Ei=1:length(E)
-        if Ei==length(E)
-            dE = abs(E[end]-E[end-1])
-        else
-            dE = abs(E[Ei+1]-E[Ei])
-        end
-        for pi=1:length(p)
-            if pi==length(p)
-                dp = abs(p[end]-p[end-1])
-            else
-                dp = abs(p[pi+1]-p[pi])
-            end
-            for Ri=1:length(R)
-                if Ri==length(R)
-                    dR = abs(R[end]-R[end-1])
-                else
-                    dR = abs(R[Ri+1]-R[Ri])
-                end
-                for Zi=1:length(Z)
-                    if Zi==length(Z)
-                        dZ = abs(Z[end]-Z[end-1])
-                    else
-                        dZ = abs(Z[Zi+1]-Z[Zi])
-                    end
-
-                    vols[Ei,pi,Ri,Zi] = dE*dp*dR*dZ
-                end
-            end
-        end
-    end
-
-    return vols
+    dE4D, dp4D, dR4D, dZ4D = get4DDiffs(E, p, R, Z)
+    dvols = dE4D .*dp4D .*dR4D .*dZ4D
+    return dvols
 end
 
 function orbit_matrix(M::AbstractEquilibrium, grid::OrbitGrid, energy, pitch, r, z; kwargs...)
@@ -356,7 +361,11 @@ function map_orbits(grid::OrbitGrid, f::Vector, os_equidistant::Bool)
     if length(grid.counts) != length(f)
         throw(ArgumentError("Incompatible sizes"))
     end
-    dorb = abs((grid.r[2]-grid.r[1])*(grid.energy[2]-grid.energy[1])*(grid.pitch[2]-grid.pitch[1]))
+    if os_equidistant
+        dorb = abs((grid.r[2]-grid.r[1])*(grid.energy[2]-grid.energy[1])*(grid.pitch[2]-grid.pitch[1])) # Scalar
+    else
+        dorb = get3DVols(og.energy, og.pitch, og.r) # 3D matrix
+    end
 
     if os_equidistant
         return [i == 0 ? zero(f[1]) : f[i]/(grid.counts[i]*dorb) for i in grid.orbit_index]
