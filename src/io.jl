@@ -54,7 +54,7 @@ function FIDASIMSpectra(fname::String)
     nchan = Int(read(f["nchan"]))
     lambda = read(f["lambda"])
     nlam = length(lambda)
-    vars = names(f)
+    vars = keys(f)
 
     brems = "brems" in vars ? read(f["brems"]) : Zeros(nlam,nchan)
     full = "full" in vars ? read(f["full"]) : Zeros(nlam,nchan)
@@ -352,7 +352,7 @@ function FIDASIMBeamGeometry(filename::String)
     isfile(filename) || error("File does not exist")
 
     f = h5open(filename)
-    if !("nbi" in names(f))
+    if !("nbi" in keys(f))
         close(f)
         error("Beam geometry not in file")
     end
@@ -409,7 +409,7 @@ function FIDASIMSpectraGeometry(filename::String)
     isfile(filename) || error("File does not exist")
 
     f = h5open(filename)
-    if !("spec" in names(f))
+    if !("spec" in keys(f))
         close(f)
         error("Spectra geometry not in file")
     end
@@ -453,7 +453,7 @@ function FIDASIMNPAGeometry(filename::String)
     isfile(filename) || error("File does not exist")
 
     f = h5open(filename)
-    if !("npa" in names(f))
+    if !("npa" in keys(f))
         close(f)
         error("NPA geometry not in file")
     end
@@ -569,7 +569,7 @@ function FIDASIMPlasmaParameters(filename::String)
     fp = f["plasma"]
     nr = read(fp["nr"])
     nz = read(fp["nz"])
-    if "nphi" in names(fp)
+    if "nphi" in keys(fp)
         nphi = read(fp["nphi"])
     else
         nphi = 1
@@ -592,7 +592,7 @@ function FIDASIMPlasmaParameters(filename::String)
     vt = read(fp["vt"])
     vz = read(fp["vz"])
 
-    if "denn" in names(fp)
+    if "denn" in keys(fp)
         denn = read(fp["denn"])
     else
         denn = zero(dene)
