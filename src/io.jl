@@ -285,22 +285,22 @@ function write_fidasim_distribution(M::AbstractEquilibrium, orbits::Array; filen
             file["nparticle"] = npart
             file["time"] = time
             file["type"] = 2
-            file["tau_p","shuffle",(),"chunk", (norbs),"compress", 4] = [o.tau_p for o in oo]
-            file["tau_t","shuffle",(),"chunk", (norbs),"compress", 4] = [o.tau_t for o in oo]
+            file["tau_p",shuffle=(),chunk=(norbs),compress=4] = [o.tau_p for o in oo]
+            file["tau_t",shuffle=(),chunk=(norbs),compress=4] = [o.tau_t for o in oo]
 
             if isa(oo[1].coordinate, EPRCoordinate)
-                file["energy_c","shuffle",(),"chunk",(norbs),"compress",4] = [o.coordinate.energy for o in oo]
-                file["pitch_c","shuffle",(),"chunk",(norbs),"compress",4] = [o.coordinate.pitch for o in oo]
-                file["r_c","shuffle",(),"chunk",(norbs),"compress",4] = [o.coordinate.r for o in oo]
-                file["z_c","shuffle",(),"chunk",(norbs),"compress",4] = [o.coordinate.z for o in oo]
+                file["energy_c",shuffle=(),chunk=(norbs),compress=4] = [o.coordinate.energy for o in oo]
+                file["pitch_c",shuffle=(),chunk=(norbs),compress=4] = [o.coordinate.pitch for o in oo]
+                file["r_c",shuffle=(),chunk=(norbs),compress=4] = [o.coordinate.r for o in oo]
+                file["z_c",shuffle=(),chunk=(norbs),compress=4] = [o.coordinate.z for o in oo]
             end
 
-            file["energy","shuffle",(),"chunk",(npart),"compress",4] = vcat((o.path.energy for o in oo)...)
-            file["pitch","shuffle",(),"chunk",(npart),"compress",4] = vcat((B0Ip_sign(M)*o.path.pitch for o in oo)...)
-            file["r","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.r for o in oo)...)
-            file["z","shuffle",(),"chunk",(npart),"compress",4] = vcat((100*o.path.z for o in oo)...)
-            file["class","shuffle",(),"chunk",(npart),"compress",4] = vcat((fill(i,length(o.path)) for (i,o) in enumerate(oo))...)
-            file["weight","shuffle",(),"chunk",(npart),"compress",4] = vcat((o.path.dt.*(ntot/sum(o.path.dt)) for o in oo)...)
+            file["energy",shuffle=(),chunk=(npart),compress=4] = vcat((o.path.energy for o in oo)...)
+            file["pitch",shuffle=(),chunk=(npart),compress=4] = vcat((B0Ip_sign(M)*o.path.pitch for o in oo)...)
+            file["r",shuffle=(),chunk=(npart),compress=4] = vcat((100*o.path.r for o in oo)...)
+            file["z",shuffle=(),chunk=(npart),compress=4] = vcat((100*o.path.z for o in oo)...)
+            file["class",shuffle=(),chunk=(npart),compress=4] = vcat((fill(i,length(o.path)) for (i,o) in enumerate(oo))...)
+            file["weight",shuffle=(),chunk=(npart),compress=4] = vcat((o.path.dt.*(ntot/sum(o.path.dt)) for o in oo)...)
 
             ## create datasets
             #energy = d_create(file, "energy", datatype(Float64), (npart,), "shuffle", (), "chunk", (npart,), "compress", 4)
