@@ -13,8 +13,14 @@ function Base.show(io::IO, og::OrbitGrid)
     print(io, "OrbitGrid: $(length(og.energy))×$(length(og.pitch))×$(length(og.r)):$(length(og.counts))")
 end
 
-function orbit_grid(M::AbstractEquilibrium, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
-                    q = 1, amu = H2_amu, kwargs...)
+"""
+    orbit_grid(M, eo, po, ro)
+
+Calculates and returns an orbit_grid and vector of orbits specified by three input vectors eo (energy), po (pitch_m) and ro (r_m). 
+If calculate_jacdets=true, the orbit path is calculated and stored, along with the jacobian determinant of the transform from orbit-space (E,pitch_m,R_m,t_m) to particle-space (E,pitch,R,Z).
+"""
+function orbit_grid(M::AbstractEquilibrium, eo::AbstractVector, po::AbstractVector, ro::AbstractVector; debug=false,
+                    q = 1, amu = H2_amu, calculate_jacdets=false, tol=0.1, kwargs...)
 
     nenergy = length(eo)
     npitch = length(po)
@@ -29,31 +35,65 @@ function orbit_grid(M::AbstractEquilibrium, eo::AbstractVector, po::AbstractVect
     subs = CartesianIndices((nenergy,npitch,nr))
 
     p = Progress(norbs)
-    channel = RemoteChannel(()->Channel{Bool}(norbs), 1)
-    orbs = fetch(@sync begin
-        @async while take!(channel)
-            ProgressMeter.next!(p)
-        end
-        @async begin
-            orbs = @distributed (vcat) for i=1:norbs
-                ie,ip,ir = Tuple(subs[i])
-                c = EPRCoordinate(M,eo[ie],po[ip],ro[ir],q=q,amu=amu)
-                try
-                    o = get_orbit(M, c; kwargs...)
-                catch
-                    o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
-                end
 
-                if o.class in (:incomplete,:invalid,:lost)
-                    o = Orbit(o.coordinate,:incomplete)
-                end
-                put!(channel, true)
-                o
+    if !debug
+        channel = RemoteChannel(()->Channel{Bool}(norbs), 1)
+        orbs = fetch(@sync begin
+            @async while take!(channel)
+                ProgressMeter.next!(p)
             end
-            put!(channel, false)
-            orbs
+            @async begin
+                orbs = @distributed (vcat) for i=1:norbs
+                    ie,ip,ir = Tuple(subs[i])
+                    c = EPRCoordinate(M,eo[ie],po[ip],ro[ir],q=q,amu=amu)
+
+                    try
+                        if calculate_jacdets 
+                            o = get_orbit(M, c; store_path=true, kwargs...)
+                            jacdets = GuidingCenterOrbits.get_jacobian(M,o,tol=tol)
+                            o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,OrbitPath(o.path,jacdets),o.gcvalid)
+                        else
+                            o = get_orbit(M, c; kwargs...)
+                        end
+                    catch
+                        o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
+                    end
+
+                    if o.class in (:incomplete,:invalid,:lost)
+                        o = Orbit(o.coordinate,:incomplete)
+                    end
+                    put!(channel, true)
+                    o
+                end
+                put!(channel, false)
+                orbs
+            end
+        end)
+    else
+        orbs = []
+        for i=1:norbs
+            ie,ip,ir = Tuple(subs[i])
+            c = EPRCoordinate(M,eo[ie],po[ip],ro[ir],q=q,amu=amu)
+
+            try
+                if calculate_jacdets 
+                    o = get_orbit(M, c; store_path=true, kwargs...)
+                    jacdets = GuidingCenterOrbits.get_jacobian(M,o,tol=tol)
+                    o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,OrbitPath(o.path,jacdets),o.gcvalid)
+                else
+                    o = get_orbit(M, c; kwargs...)
+                end
+            catch
+                o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
+            end
+
+            if o.class in (:incomplete,:invalid,:lost)
+                o = Orbit(o.coordinate,:incomplete)
+            end
+            ProgressMeter.next!(p)
+            push!(orbs,o)
         end
-    end)
+    end
 
     for i=1:norbs
         class[subs[i]] = orbs[i].class

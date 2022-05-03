@@ -9,9 +9,16 @@ using Distributed
 using Printf
 import Base.Iterators: partition
 
+using Reexport
+@reexport using GuidingCenterOrbits
+using SciMLBase
+using DiffEqBase
+using OrdinaryDiffEq
+using DifferentialEquations
+using DiffEqGPU
+using ThinPlateSplines
 using EFIT
 using Equilibrium
-using GuidingCenterOrbits
 using HDF5
 using JLD2, FileIO
 using Clustering
@@ -75,6 +82,13 @@ export map_orbits, bin_orbits
 export write_orbit_grid, read_orbit_grid
 export orbit_index, orbit_matrix
 export OrbitSpline
+
+include("psgrids.jl")
+export PSGrid, DET_GCPtoEPR, getGCEPRCoord, fill_PSGrid, fill_PSGridGPU
+export write_PSGrid, read_PSGrid
+
+include("gpu_grids.jl")
+export fill_PSGridGPU
 
 include("covariance.jl")
 export epr_cov
