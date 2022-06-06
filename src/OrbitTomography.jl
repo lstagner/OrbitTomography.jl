@@ -16,7 +16,6 @@ using DiffEqBase
 using OrdinaryDiffEq
 using DifferentialEquations
 using DiffEqGPU
-using ThinPlateSplines
 using EFIT
 using Equilibrium
 using HDF5
@@ -27,6 +26,7 @@ using StatsBase
 using FillArrays
 using ProgressMeter
 using NearestNeighbors
+#using SharedArrays
 using SparseArrays
 using StaticArrays
 using NonNegLeastSquares
@@ -84,8 +84,8 @@ export orbit_index, orbit_matrix
 export OrbitSpline
 
 include("psgrids.jl")
-export PSGrid, DET_GCPtoEPR, getGCEPRCoord, fill_PSGrid, fill_PSGridGPU
-export write_PSGrid, read_PSGrid
+export PSGrid, DET_GCPtoEPR, getGCEPRCoord, fill_PSGrid, fill_PSGrid_batch, reconstruct_GCEPRCoords, reconstruct_PSGrid
+export write_PSGrid, read_PSGrid, write_GCEPRCoords, read_GCEPRCoords
 
 include("gpu_grids.jl")
 export fill_PSGridGPU

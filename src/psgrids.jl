@@ -28,11 +28,11 @@ function getGCEPRCoord(M::AbstractEquilibrium, wall::Union{Nothing,Wall},gcp::GC
     gcp0 = GCParticle(ed,pd,rd,zd,gcp.m,gcp.q)
 
     if gcvalid_check 
-        path, stat = integrate(M, gcp0,wall=wall,one_transit=true, r_callback=true, classify_orbit=true, store_path=true, drift=drift, vacuum=vacuum, toa=true, limit_phi=true, kwargs...)
+        path, stat = integrate(M, gcp0; wall=wall,one_transit=true, r_callback=true, classify_orbit=true, store_path=true, drift=drift, vacuum=vacuum, toa=true, limit_phi=true, kwargs...)
         CleanPath = OrbitPath(vacuum,drift,ForwardDiff.value.(path.energy),ForwardDiff.value.(path.pitch),ForwardDiff.value.(path.r),ForwardDiff.value.(path.z),ForwardDiff.value.(path.phi),ForwardDiff.value.(path.dt))               
         gcvalid = gcde_check(M, gcp, CleanPath) 
     else
-        path, stat = integrate(M, gcp0,wall=wall,one_transit=true, r_callback=true, classify_orbit=true, store_path=false, drift=drift, vacuum=vacuum, toa=true, limit_phi=true, kwargs...)
+        path, stat = integrate(M, gcp0; wall=wall,one_transit=true, r_callback=true, classify_orbit=true, store_path=false, drift=drift, vacuum=vacuum, toa=true, limit_phi=true, kwargs...)
         gcvalid=nothing
     end
 
@@ -107,7 +107,7 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
                 o = GCEPRCoordinate(c,:incomplete) 
             else
                 try
-                    o = getGCEPRCoord(M,wall,c, kwargs...)
+                    o = getGCEPRCoord(M,wall,c; kwargs...)
                 catch
                     o = GCEPRCoordinate(c,:incomplete) 
                 end
@@ -131,7 +131,7 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
                 o = GCEPRCoordinate(c,:incomplete) 
             else
                 try
-                    o = getGCEPRCoord(M,wall,c, kwargs...)
+                    o = getGCEPRCoord(M,wall,c; kwargs...)
                 catch
                     o = GCEPRCoordinate(c,:incomplete) 
                 end
@@ -172,6 +172,54 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
     return psorbs, psgrid
 end
 
+"""
+    PS_vector2matrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid)
+
+Converts a 1D vector where each value corresponds to a valid orbit (using PS_Grid.point_index) into a 4D matrix of values.
+"""
+function PS_vector2matrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid)
+    nenergy = length(PS_Grid.energy)
+    npitch = length(PS_Grid.pitch)
+    nr = length(PS_Grid.r)
+    nz = length(PS_Grid.z)
+
+    subs = CartesianIndices((nenergy,npitch,nr,nz))
+
+    F_ps_Matrix = zeros(Float64,nenergy,npitch,nr,nz)
+
+    npoints = nenergy*npitch*nr*nz
+
+    for i = 1:npoints
+        (PS_Grid.point_index[subs[i]] == 0) ? (F_ps_Matrix[subs[i]] = 0.0) : (F_ps_Matrix[subs[i]]=F_ps_VEC[PS_Grid.point_index[subs[i]]])
+    end
+
+    return F_ps_Matrix
+end
+
+"""
+    PS_matrix2vector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
+
+Converts a 4D matrix of values in particle-space, and converts it into a 1D vector where each value corresponds to a valid orbit (using PS_Grid.point_index).
+"""
+function PS_matrix2vector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
+    nenergy = length(PS_Grid.energy)
+    npitch = length(PS_Grid.pitch)
+    nr = length(PS_Grid.r)
+    nz = length(PS_Grid.z)
+
+    subs = CartesianIndices((nenergy,npitch,nr,nz))
+
+    F_ps_VEC = Float64[]
+
+    npoints = nenergy*npitch*nr*nz
+
+    for i = 1:npoints
+        (PS_Grid.point_index[subs[i]] != 0) && push!(F_ps_VEC,F_ps_Matrix[subs[i]])
+    end
+
+    return F_ps_VEC
+end
+
 function write_PSGrid(grid::PSGrid;filename="PSGrid.h5")
     h5open(filename,"w") do file
         file["energy"] = collect(grid.energy)
@@ -205,11 +253,16 @@ function read_PSGrid(filename)
     return PSGrid(energy,pitch,r,z,counts,point_index,class,tau_p,tau_t)
 end
 
-function write_GCEPRCoords(psorbs;filename = "GCEPRCoords.h5")
+"""
+    write_GCEPRCoords(psorbs;vacuum=false, drift=true, filename = "GCEPRCoords.h5")
+
+Prints a vector of GCEPRCoords. *MUST manually specify vacuum, drift.
+"""
+function write_GCEPRCoords(psorbs;vacuum=false, drift=true, filename = "GCEPRCoords.h5")
     numcoords = length(psorbs)
 
     classes = Vector{String}()
-    gcvalids = Vector{Union{Bool,Nothing}}()
+    gcvalids = Vector{Bool}()
 
     E = zeros(Float64,numcoords)
     p = zeros(Float64,numcoords)
@@ -224,22 +277,41 @@ function write_GCEPRCoords(psorbs;filename = "GCEPRCoords.h5")
     t_p = zeros(Float64,numcoords)
     t_t = zeros(Float64,numcoords)
 
-    for (io,o) in enumerate(orbs) 
-        E[io] = o.energy
-        p[io] = o.pitch
-        R[io] = o.r
-        Z[io] = o.z
-        pm[io] = o.pitch_m
-        Rm[io] = o.r_m
-        Zm[io] = o.z_m
-        tm[io] = o.t
-        jacdets[io] = o.jacdet
+    if typeof(psorbs[1].gcvalid)==Nothing #Assumes gcvalid_check = false when PSGrid written, such that all GCEPRCoords have gcvalid=nothing
+        for (io,o) in enumerate(psorbs) 
+            E[io] = o.energy
+            p[io] = o.pitch
+            R[io] = o.r
+            Z[io] = o.z
+            pm[io] = o.pitch_m
+            Rm[io] = o.r_m
+            Zm[io] = o.z_m
+            tm[io] = o.t
+            jacdets[io] = o.jacdet
 
-        t_p[io] = o.tau_p
-        t_t[io] = o.tau_t
+            t_p[io] = o.tau_p
+            t_t[io] = o.tau_t
 
-        push!(classes,string(o.class))
-        push!(gcvalids,o.gcvalid)
+            push!(classes,string(o.class))
+        end
+    else 
+        for (io,o) in enumerate(psorbs) 
+            E[io] = o.energy
+            p[io] = o.pitch
+            R[io] = o.r
+            Z[io] = o.z
+            pm[io] = o.pitch_m
+            Rm[io] = o.r_m
+            Zm[io] = o.z_m
+            tm[io] = o.t
+            jacdets[io] = o.jacdet
+    
+            t_p[io] = o.tau_p
+            t_t[io] = o.tau_t
+    
+            push!(classes,string(o.class))
+            push!(gcvalids,o.gcvalid)
+        end    
     end
     
     h5open(filename,"w") do file
@@ -259,16 +331,21 @@ function write_GCEPRCoords(psorbs;filename = "GCEPRCoords.h5")
         file["class"] = classes
         file["gcvalids"] = gcvalids
 
-        file["m"] = orbs[1].coordinate.m
-        file["q"] = orbs[1].coordinate.q
+        file["m"] = psorbs[1].m
+        file["q"] = psorbs[1].q
 
-        file["vacuum"] = orbs[1].path.vacuum
-        file["drift"] = orbs[1].path.drift    
+        file["vacuum"] = vacuum
+        file["drift"] = drift    
     end
     nothing
 end
 
-function read_GCEPRCoords(filename)
+"""
+    read_GCEPRCoords(filename;verbose=true)
+
+Reads GCEPRCoords that were printed to file by write_GCEPRCoords. Note the output of this function is coords,vacuum,drift.
+"""
+function read_GCEPRCoords(filename;verbose=true)
     isfile(filename) || error("File does not exist")
 
     f = h5open(filename)
@@ -297,19 +374,27 @@ function read_GCEPRCoords(filename)
 
     coords = GCEPRCoordinate[]
 
-    print("Appending Orbits\n")
+    verbose && print("Appending Orbits\n")
     prog = Progress(length(E))
 
-    for i=1:length(E)
-        c = GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],gcvalids[i],m,q)
+    if length(gcvalids) == 0
+        for i=1:length(E)
+            c = GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],nothing,m,q)
 
-        ProgressMeter.next!(prog)
-        push!(coords,c)
+            ProgressMeter.next!(prog)
+            push!(coords,c)
+        end
+    else
+        for i=1:length(E)
+            c = GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],gcvalids[i],m,q)
+
+            ProgressMeter.next!(prog)
+            push!(coords,c)
+        end
     end
 
     return coords,vacuum,drift
 end 
-
 
 """
     fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector; batch_multipler=20, q=1, amu=OrbitTomography.H2_amu, verbose = false, filename_prefactor = "", kwargs...)
@@ -317,7 +402,8 @@ end
 This function uses pmap to apply getGCEPRCoord in distributed batches to every point in a 4D grid specified by the vectors energy, pitch, r and z.
 Each distributed batch of GCEPRCoords is printed straight to file by its remote worker. The function reconstruct_PSGrid must then be ran in a single high-RAM node to read and collate these GCEPRCoord batches and make a single PSGrid.
 
-Just before you call this function you must input the following: 
+
+*Just before you call this function you must input the following: 
     "path = pwd()
     filename_prefactor = <whatever you are using>
  
@@ -326,10 +412,9 @@ Just before you call this function you must input the following:
         remotecall_fetch(()->filename_prefactor, i)
     end
     @everywhere cd(path)"
-
 Then state filename_prefactor=filename_prefactor in the function input
 """
-function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector; batch_multipler=20, q=1, amu=OrbitTomography.H2_amu, verbose = false, filename_prefactor = "", kwargs...)
+function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector; filename_prefactor = "", batch_multipler=20, q=1, amu=OrbitTomography.H2_amu, verbose = false, debug=false, kwargs...)
     path=pwd()
 
     mkdir(string(filename_prefactor,"_Batches"))
@@ -352,9 +437,17 @@ function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, en
 
     print("Num batches = ",(loop_batches+1),"\n")
 
-    writebatch = x -> fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,x,batch,loop_batches, q=q, amu=amu, filename_prefactor = filename_prefactor, kwargs...)
+    writebatch = x -> fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,x,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, kwargs...)
 
-    pmap(writebatch, collect(1:(loop_batches+1)))
+    if !debug
+        pmap(writebatch, collect(1:(loop_batches+1)))
+    else
+        for i in 1:(loop_batches+1)
+            fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,i,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, kwargs...)
+        end
+    end
+
+
 
     #Writes a file to give info needed to reconstruct the whole PSGrid:
     #Need energy,pitch,r,z, q and amu 
@@ -376,7 +469,7 @@ end
 
 This function is used internally within fill_PSGrid_batch. It is inputted to pmap within fill_PSGrid_batch. It sets up a local for loop on each remote worker that calculates the orbits of a specific batch specified by the inputs batch_num, batch and loop_batches.
 """
-function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall},energy::AbstractVector{T},pitch::AbstractVector{T},r::AbstractVector{T},z::AbstractVector{T},batch_num::Int,batch::Int,loop_batches::Int; q::Int=1, amu::Float64=OrbitTomography.H2_amu, filename_prefactor::String="", kwargs...) where T<:AbstractFloat
+function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall},energy::AbstractVector{T},pitch::AbstractVector{T},r::AbstractVector{T},z::AbstractVector{T},batch_num::Int,batch::Int,loop_batches::Int; q::Int=1, amu::Float64=OrbitTomography.H2_amu, filename_prefactor::String="", gcvalid_check=false, kwargs...) where T<:AbstractFloat
     nenergy = length(energy)
     npitch = length(pitch)
     nr = length(r)
@@ -384,6 +477,8 @@ function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall}
     subs = CartesianIndices((nenergy,npitch,nr,nz))
 
     npoints = nenergy*npitch*nr*nz
+
+    gcvalid_check ? (gcvalid_default = true) : (gcvalid_default = nothing) #Need gcvalid to be a consistent type for write_GCEPRCoords to work properly 
 
     if batch_num <= loop_batches
         j = batch_num
@@ -394,17 +489,17 @@ function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall}
             c = GCParticle(energy[ie],pitch[ip],r[ir],z[iz],amu*OrbitTomography.mass_u,q)
 
             if !in_vessel(wall,r[ir],z[iz])
-                o = GCEPRCoordinate(c,:incomplete) 
+                o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
             else
                 try
-                    o = getGCEPRCoord(M,wall,c, kwargs...)
+                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
                 catch
-                    o = GCEPRCoordinate(c,:incomplete) 
+                    o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
                 end
             end
 
             if o.class in (:incomplete,:invalid,:lost)
-                o = GCEPRCoordinate(c,:incomplete) 
+                o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
             end
 
             push!(GCEPRCs,o)
@@ -418,17 +513,17 @@ function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall}
             c = GCParticle(energy[ie],pitch[ip],r[ir],z[iz],amu*OrbitTomography.mass_u,q)
 
             if !in_vessel(wall,r[ir],z[iz])
-                o = GCEPRCoordinate(c,:incomplete) 
+                o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
             else
                 try
-                    o = getGCEPRCoord(M,wall,c, kwargs...)
+                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
                 catch
-                    o = GCEPRCoordinate(c,:incomplete) 
+                    o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
                 end
             end
 
             if o.class in (:incomplete,:invalid,:lost)
-                o = GCEPRCoordinate(c,:incomplete) 
+                o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
             end
 
             push!(GCEPRCs,o)
@@ -513,7 +608,7 @@ function reconstruct_GCEPRCoords(filename_prefactor::String, batch::Int, loop_ba
 
     for j=1:(loop_batches+1)
         try
-            coords = read_GCEPRCoords(string(filename_prefactor,"_batch(",batch,")",j,"of",(loop_batches+1), "_GCEPRCoords.h5")) 
+            coords,vacuum,drift = read_GCEPRCoords(string(filename_prefactor,"_batch(",batch,")",j,"of",(loop_batches+1), "_GCEPRCoords.h5");verbose=false) 
             append!(total_GCEPRCoords,coords)
         catch
             push!(batch_error,j)
