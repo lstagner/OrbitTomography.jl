@@ -16,6 +16,7 @@ using DiffEqBase
 using OrdinaryDiffEq
 using DifferentialEquations
 using DiffEqGPU
+#using DistributedArrays
 using EFIT
 using Equilibrium
 using HDF5
@@ -26,7 +27,7 @@ using StatsBase
 using FillArrays
 using ProgressMeter
 using NearestNeighbors
-#using SharedArrays
+using SharedArrays
 using SparseArrays
 using StaticArrays
 using NonNegLeastSquares
