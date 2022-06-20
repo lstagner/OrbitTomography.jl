@@ -182,69 +182,11 @@ function eprz_dist(M::AbstractEquilibrium, OS::OrbitSystem, f::Vector, orbs, sig
                             covariance=:local, norms=S3(1.0,1.0,1.0),
                             checkpoint=true, warmstart=false,file="eprz_progress.jld2", kwargs...)
 
-    nenergy = length(energy)
-    npitch = length(pitch)
-    nr = length(r)
-    nz = length(z)
-    inds = CartesianIndices((nr,nz))
-    m = orbs[1].coordinate.m
-    q = orbs[1].coordinate.q
+    return epr2ps_covariance_splined(M,OS.S_inv, f, orbs, sigma;Js=Js,energy=energy,pitch=pitch,r=r,z=z,distributed=distributed, atol=atol, domain_check=domain_check, covariance=covariance, norms=norms,checkpoint=checkpoint, warmstart=warmstart,file=file, kwargs...)
+end
 
-    f_eprz = zeros(nenergy,npitch,nr,nz)
-
-    if warmstart && isfile(file) && (filesize(file) != 0)
-        progress_file = jldopen(file,false,false,false,IOStream)
-        f_eprz = progress_file["f_eprz"]
-        last_ind = progress_file["last_ind"]
-        close(progress_file)
-    else
-        last_ind = inds[1]
-    end
-
-    if checkpoint
-        touch(file)
-    end
-
-    for I in inds
-        (I != inds[1] && I < last_ind) && continue
-        i = I[1]
-        j = I[2]
-        rr = r[i]
-        zz = z[j]
-        !(domain_check(rr,zz)) && continue
-
-        lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
-        if distributed
-            lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
-                       #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
-        else
-            lJs = [get_jacobian(M, o) for o in lorbs]
-        end
-
-        if covariance == :local
-            Si = get_covariance_matrix(M, lorbs, orbs, sigma, Js_1=lJs, Js_2=Js,
-                                       distributed=distributed, atol=atol)
-        else
-            Si = get_global_covariance_matrix(lorbs, orbs, sigma, norms=norms)
-        end
-
-        f_ep = reshape(max.(Si*(OS.S_inv*f),0.0),nenergy,npitch)
-        detJ = reshape([length(j) != 0 ? j[1] : 0.0 for j in lJs],nenergy,npitch)
-        f_ep .= f_ep./detJ
-        f_ep[detJ .== 0.0] .= 0.0
-        w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
-        f_ep[w] .= 0.0
-        f_eprz[:,:,i,j] .= f_ep
-        if checkpoint
-            progress_file = jldopen(file, true,true,true,IOStream)
-            write(progress_file,"f_eprz",f_eprz)
-            write(progress_file,"last_ind",last_ind)
-            close(progress_file)
-        end
-        last_ind = I
-    end
-
-    return EPRZDensity(f_eprz,energy,pitch,r,z)
+function epr2ps(F_os_VEC::Vector{Float64},og,PS_orbs::Vector{GCEPRCoordinate}; topological_force=true, mislabelled=false, distributed=false, rescale_factor=0.0)
+    return epr2ps(F_os_VEC::Vector{Float64},og.energy,og.pitch,og.r,PS_orbs,og.orbit_index,og.class; topological_force=topological_force, mislabelled=mislabelled, distributed=distributed, rescale_factor=rescale_factor)
 end
 
 function epr2ps(F_os_VEC::Vector{Float64},oenergy,opitch,or,PS_orbs::Vector{GCEPRCoordinate},og_orbit_index::Array{Int,3},og_class::Array{Symbol,3}; topological_force=true, mislabelled=false, distributed=false, rescale_factor=0.0)
@@ -521,40 +463,107 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy,opitch,or,PS_orbs::Vector{GCEP
     end
 end
 
-function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Vector{Orbit{T,S}}, PS_orbs::Vector{GCEPRCoordinate}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0) where {T,S}
-    ctr_passing_points = Array{Float64}(undef, 0,3)
-    ctr_passing_vals = Float64[]
-    trapped_points = Array{Float64}(undef, 0,3)
-    trapped_vals = Float64[]
-    co_passing_points = Array{Float64}(undef, 0,3)
-    co_passing_vals = Float64[]
-    
-
+function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Vector{Orbit{T,S}}, PS_orbs::Vector{GCEPRCoordinate}; vers=2, verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0) where {T,S}
     p = Progress(length(orbs))
     verbose && print("Sorting orbits into types.\n")
-    for (io,i) in enumerate(orbs)
-        if i.class == :ctr_passing
-            ctr_passing_points = vcat(ctr_passing_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]') #is this efficient?
-            push!(ctr_passing_vals,F_os_VEC[io])
-        end
-        if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
-            trapped_points = vcat(trapped_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]')
-            push!(trapped_vals,F_os_VEC[io])
-        end
-        if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
-            co_passing_points = vcat(co_passing_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]')
-            push!(co_passing_vals,F_os_VEC[io])
-        end
-        ProgressMeter.next!(p)
-    end
 
-    #ctr_passing_points = transpose(ctr_passing_points)
-    #trapped_points = transpose(trapped_points)
-    #co_passing_points = transpose(co_passing_points)
+    if vers==1
+        ctr_passing_points = Array{Float64}(undef, 0,3)
+        ctr_passing_vals = Float64[]
+        trapped_points = Array{Float64}(undef, 0,3)
+        trapped_vals = Float64[]
+        co_passing_points = Array{Float64}(undef, 0,3)
+        co_passing_vals = Float64[]
+
+        for (io,i) in enumerate(orbs)
+            if i.class == :ctr_passing
+                ctr_passing_points = vcat(ctr_passing_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]') #is this efficient?
+                push!(ctr_passing_vals,F_os_VEC[io])
+            end
+            if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
+                trapped_points = vcat(trapped_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]')
+                push!(trapped_vals,F_os_VEC[io])
+            end
+            if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+                co_passing_points = vcat(co_passing_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]')
+                push!(co_passing_vals,F_os_VEC[io])
+            end
+            ProgressMeter.next!(p)
+        end
+    elseif vers==2
+        ctr_passing_points = Array{Float64}(undef, 3,0)
+        ctr_passing_vals = Float64[]
+        trapped_points = Array{Float64}(undef, 3,0)
+        trapped_vals = Float64[]
+        co_passing_points = Array{Float64}(undef, 3,0)
+        co_passing_vals = Float64[]
+
+        for (io,i) in enumerate(orbs)
+            if i.class == :ctr_passing
+                ctr_passing_points = hcat(ctr_passing_points,[i.coordinate.energy;i.coordinate.pitch;i.coordinate.r]) #is this efficient?
+                push!(ctr_passing_vals,F_os_VEC[io])
+            end
+            if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
+                trapped_points = hcat(trapped_points,[i.coordinate.energy;i.coordinate.pitch;i.coordinate.r])
+                push!(trapped_vals,F_os_VEC[io])
+            end
+            if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+                co_passing_points = hcat(co_passing_points,[i.coordinate.energy;i.coordinate.pitch;i.coordinate.r])
+                push!(co_passing_vals,F_os_VEC[io])
+            end
+            ProgressMeter.next!(p)
+        end
+
+        ctr_passing_points = copy(transpose(ctr_passing_points))
+        trapped_points = copy(transpose(trapped_points))
+        co_passing_points = copy(transpose(co_passing_points))
+    elseif vers==3
+        ctr_passing_points = SVector{3, Float64}[]
+        ctr_passing_vals = Float64[]
+        trapped_points = SVector{3, Float64}[]
+        trapped_vals = Float64[]
+        co_passing_points = SVector{3, Float64}[]
+        co_passing_vals = Float64[]
+
+        ctr_passing_num = 0
+        trapped_num = 0
+        co_passing_num = 0
+
+        for (io,i) in enumerate(orbs)
+            if i.class == :ctr_passing
+                push!(ctr_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r)) #is this efficient?
+                push!(ctr_passing_vals,F_os_VEC[io])
+                ctr_passing_num += 1
+            end
+            if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
+                push!(trapped_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
+                push!(trapped_vals,F_os_VEC[io])
+                trapped_num += 1
+            end
+            if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+                push!(co_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
+                push!(co_passing_vals,F_os_VEC[io])
+                co_passing_num += 1
+            end
+            ProgressMeter.next!(p)
+        end
+
+        ctr_passing_points = copy(transpose(reshape(reinterpret(Float64, ctr_passing_points), (3,ctr_passing_num))))
+        trapped_points = copy(transpose(reshape(reinterpret(Float64, trapped_points), (3,trapped_num))))
+        co_passing_points = copy(transpose(reshape(reinterpret(Float64, co_passing_points), (3,co_passing_num))))
+    end
 
     ctr_passing_spline = PolyharmonicSpline(k,ctr_passing_points,ctr_passing_vals)
     trapped_spline = PolyharmonicSpline(k,trapped_points,trapped_vals)
     co_passing_spline = PolyharmonicSpline(k,co_passing_points,co_passing_vals)
+
+    if distributed
+        @eval @everywhere begin
+            ctr_passing_spline = $ctr_passing_spline
+            trapped_spline = $trapped_spline
+            co_passing_spline = $co_passing_spline
+        end
+    end
 
     verbose && print("Evaluating particle-space distribution values.\n")
     if distributed
@@ -593,6 +602,117 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Vector{Orbit{T,S}}, PS_
     end
 
     return vec(PS_dist)
+end
+
+function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Vector{Orbit{T,S}}, psgrid::PSGrid, sigma;
+                            distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
+                            covariance=:local, norms=S3(1.0,1.0,1.0),
+                            checkpoint=true, warmstart=false,file="eprz_progress.jld2",  rescale_factor= 0.0, kwargs...) where {T,S}
+
+    Js = Array{Vector{Float64}}(undef, length(orbs))
+    for (io,o) in enumerate(orbs) 
+        Js[io] = o.path.jacdets
+    end
+
+    eprz_density = epr2ps_covariance_splined(M, S_inv, F_os_VEC, orbs, sigma; Js=Js, energy=psgrid.energy, pitch=psgrid.pitch, r=psgrid.r, z=psgrid.z,distributed=distributed, atol=atol, domain_check=domain_check, covariance=covariance, norms=norms, checkpoint=checkpoint, warmstart=warmstart, file=file, kwargs...)
+    F_ps_VEC = ps_MatrixToVector(eprz_density.d, psgrid)
+
+    if rescale_factor == 1.0
+        F_ps_VEC =  (F_ps_VEC ./ sum(abs.(F_ps_VEC))) .* length(F_ps_VEC)
+    elseif rescale_factor != 0.0
+        F_ps_VEC =  (F_ps_VEC ./ sum(abs.(F_ps_VEC))) .* rescale_factor
+    end
+
+    return F_ps_VEC
+end
+
+function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Vector{Orbit{T,S}}, sigma;
+                            Js=Vector{Vector{Float64}}[],
+                            energy=range(1.0,80.0,length=25),
+                            pitch=range(-0.99,0.99,length=25),
+                            r = range(limits(M)[1]...,length=25),
+                            z = range(limits(M)[2]...,length=25),
+                            distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
+                            covariance=:local, norms=S3(1.0,1.0,1.0),
+                            checkpoint=true, warmstart=false,file="eprz_progress.jld2", kwargs...) where {T,S}
+
+    if isempty(Js) && (!isempty(orbs[1].path.jacdets))
+        Js = Array{Vector{Float64}}(undef, length(orbs))
+        for (io,o) in enumerate(orbs) 
+            Js[io] = o.path.jacdets
+        end
+    end
+
+    nenergy = length(energy)
+    npitch = length(pitch)
+    nr = length(r)
+    nz = length(z)
+    inds = CartesianIndices((nr,nz))
+    m = orbs[1].coordinate.m
+    q = orbs[1].coordinate.q
+
+    f_eprz = zeros(nenergy,npitch,nr,nz)
+
+    if warmstart && isfile(file) && (filesize(file) != 0)
+        progress_file = jldopen(file,false,false,false,IOStream)
+        f_eprz = progress_file["f_eprz"]
+        last_ind = progress_file["last_ind"]
+        close(progress_file)
+    else
+        last_ind = inds[1]
+    end
+
+    if checkpoint
+        touch(file)
+    end
+
+    for I in inds
+        (I != inds[1] && I < last_ind) && continue
+        i = I[1]
+        j = I[2]
+        rr = r[i]
+        zz = z[j]
+        !(domain_check(rr,zz)) && continue
+
+        lorbs = reshape([get_orbit(M, GCParticle(energy[k],pitch[l],rr,zz,m,q); kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
+        if distributed
+            lJs = pmap(o->get_jacobian(M,o), lorbs, on_error = ex->zeros(2))
+                       #batch_size=round(Int, nenergy*npitch/(5*nprocs())))
+        else
+            lJs = Array{Vector{Float64}}(undef, length(lorbs))
+            for (io,o) in enumerate(lorbs)
+                try
+                    lJs[io] = get_jacobian(M, o)
+                catch
+                    lJs[io] = zeros(2)
+                end
+            end
+        end
+
+        if covariance == :local
+            Si = get_covariance_matrix(M, lorbs, orbs, sigma, Js_1=lJs, Js_2=Js,
+                                       distributed=distributed, atol=atol)
+        else
+            Si = get_global_covariance_matrix(lorbs, orbs, sigma, norms=norms)
+        end
+
+        f_ep = reshape(max.(Si*(S_inv*F_os_VEC),0.0),nenergy,npitch)
+        detJ = reshape([length(j) != 0 ? j[1] : 0.0 for j in lJs],nenergy,npitch)
+        f_ep .= f_ep./detJ
+        f_ep[detJ .== 0.0] .= 0.0
+        w = reshape([o.class in (:lost, :incomplete, :unknown) for o in lorbs],nenergy, npitch)
+        f_ep[w] .= 0.0
+        f_eprz[:,:,i,j] .= f_ep
+        if checkpoint
+            progress_file = jldopen(file, true,true,true,IOStream)
+            write(progress_file,"f_eprz",f_eprz)
+            write(progress_file,"last_ind",last_ind)
+            close(progress_file)
+        end
+        last_ind = I
+    end
+
+    return EPRZDensity(f_eprz,energy,pitch,r,z)
 end
 
 function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Vector{Orbit{T,S}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) where {T,S}
@@ -758,7 +878,7 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::V
     return vec(F_os_VEC)
 end
 
-function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Vector{Orbit{T,S}}; k::Int=2, vers=2, distributed=false, rescale_factor=0.0) where {T,S} #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
+function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Vector{Orbit{T,S}}; k::Int=2, vers=1, distributed=false, rescale_factor=0.0) where {T,S} #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
     num_psorbs = length(PS_orbs)
 
     if distributed
@@ -780,6 +900,12 @@ function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoor
             end
 
             spline = PolyharmonicSpline(k,points,F_ps_Weights)
+        elseif vers == 3 #this one slowest at small scale
+            points = @distributed (hcat) for i = 1:num_psorbs
+                [PS_orbs[i].energy;PS_orbs[i].pitch;PS_orbs[i].r;PS_orbs[i].z]
+            end
+
+            spline = PolyharmonicSpline(k,copy(transpose(points)),F_ps_Weights)
         end
 
         os_dist = @showprogress @distributed (vcat) for i in og_orbs
@@ -834,7 +960,7 @@ end
 
 function ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, psgrid::PSGrid, og::OrbitGrid; numOsamples::Int64, progress_prefactor = "_", two_pi_mod = false, genuine_PS_weights = false, verbose=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, saveProgress=true, kwargs...) 
     if length(size(F_ps_Weights)) == 1
-        F_ps_Weights = PS_VectorToMatrix(F_ps_Weights,psgrid)
+        F_ps_Weights = ps_VectorToMatrix(F_ps_Weights,psgrid)
     end
 
     return ps2epr_sampled(M, wall, F_ps_Weights, psgrid.energy, psgrid.pitch, psgrid.r, psgrid.z, og; numOsamples=numOsamples, progress_prefactor = progress_prefactor, two_pi_mod = two_pi_mod, genuine_PS_weights = genuine_PS_weights, verbose=verbose, GCP = GCP, distributed=distributed, nbatch = nbatch, saveProgress=saveProgress, kwargs...) 

@@ -173,11 +173,11 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
 end
 
 """
-    PS_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid)
+    ps_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid)
 
 Converts a 1D vector where each value corresponds to a valid orbit (using PS_Grid.point_index) into a 4D matrix of values.
 """
-function PS_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid; vers::Int=1, distributed::Bool=false)
+function ps_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid; vers::Int=1, distributed::Bool=false)
     nenergy = length(PS_Grid.energy)
     npitch = length(PS_Grid.pitch)
     nr = length(PS_Grid.r)
@@ -188,10 +188,10 @@ function PS_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid; ve
 
     if !distributed
         F_ps_Matrix = zeros(Float64,nenergy,npitch,nr,nz)
-        for i = 1:npoints
+        @inbounds for i = 1:npoints
             (PS_Grid.point_index[subs[i]] == 0) ? (F_ps_Matrix[subs[i]] = 0.0) : (F_ps_Matrix[subs[i]]=F_ps_VEC[PS_Grid.point_index[subs[i]]])
         end
-    else
+    else 
         if vers==1
             F_ps_Matrix = SharedArray{Float64}(undef,nenergy,npitch,nr,nz)
 
@@ -225,11 +225,11 @@ function PS_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid; ve
 end
 
 """
-    PS_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
+    ps_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
 
 Converts a 4D matrix of values in particle-space, and converts it into a 1D vector where each value corresponds to a valid orbit (using PS_Grid.point_index).
 """
-function PS_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
+function ps_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
     nenergy = length(PS_Grid.energy)
     npitch = length(PS_Grid.pitch)
     nr = length(PS_Grid.r)
@@ -241,7 +241,7 @@ function PS_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
 
     npoints = nenergy*npitch*nr*nz
 
-    for i = 1:npoints
+    @inbounds for i = 1:npoints
         (PS_Grid.point_index[subs[i]] != 0) && push!(F_ps_VEC,F_ps_Matrix[subs[i]])
     end
 

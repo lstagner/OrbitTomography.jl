@@ -38,6 +38,9 @@ using Optim
 using Sobol
 using ForwardDiff
 using Roots
+using Plots
+using Plots.PlotMeasures
+using LaTeXStrings
 import IterTools: nth
 
 const S3 = SVector{3}
@@ -86,7 +89,7 @@ export OrbitSpline
 
 include("psgrids.jl")
 export PSGrid, DET_GCPtoEPR, getGCEPRCoord, fill_PSGrid, fill_PSGrid_batch, reconstruct_GCEPRCoords, reconstruct_PSGrid
-export write_PSGrid, read_PSGrid, write_GCEPRCoords, read_GCEPRCoords
+export write_PSGrid, read_PSGrid, write_GCEPRCoords, read_GCEPRCoords, ps_VectorToMatrix, ps_MatrixToVector
 
 include("gpu_grids.jl")
 export fill_PSGridGPU
@@ -104,7 +107,7 @@ include("tomography.jl")
 export OrbitSystem, lcurve_point, lcurve, marginal_loglike, optimize_alpha!, estimate_rtol, optimize_parameters, inv_chol, solve
 
 include("transforms.jl")
-export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution
+export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution, epr2ps, epr2ps_splined, ps2epr, ps2epr_splined, ps2epr_sampled, epr2ps_covariance_splined
 
 include("analytic.jl")
 export lnΔ_ee, lnΔ_ei, lnΔ_ii, slowing_down_time, critical_energy, approx_critical_energy
@@ -112,5 +115,9 @@ export gaussian, slowing_down, approx_slowing_down, bimaxwellian, maxwellian
 
 include("basis.jl")
 export Basis, construct_basis, evaluate
+
+include("visualisation.jl")
+export plot_PS_distribution_drop_dims, plot_PS_distribution_EP, plot_OG_distribution_drop_dims, plot_OG_distribution_ALL_E
+export Overplot_topological_contour, Overplot_topological_contour2, plot_Energy_Dist, plot_topological_boundary, map_orbits_no_scaling
 
 end # module

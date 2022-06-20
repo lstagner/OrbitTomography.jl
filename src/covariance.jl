@@ -531,7 +531,7 @@ end
     get_covariance_matrix(M,orbits,sigma,Js,sparse=true,atol=1e-5,distributed=true)
 
 Calculate the covariance matrix for the orbits. Use the correlation lengths for the energy, pitch, R and Z provided in sigma.
-If provided, use the pre-calculated Jacobian Js to speed up computation, return a sparse matrix if sparse=true, use atol 
+Use the pre-calculated Jacobians in the orbits paths, or pre-provided in Js, to speed up computation. Return a sparse matrix if sparse=true, use atol 
 for the precision in computing the covariance between two orbits and use parallel computation if distributed=true.
 """
 function get_covariance_matrix(M::AbstractEquilibrium, orbits::Vector, sigma::AbstractVector;
@@ -544,7 +544,12 @@ function get_covariance_matrix(M::AbstractEquilibrium, orbits::Vector, sigma::Ab
     
     orbs = [OrbitSpline(o) for o in orbits] # For more info on OrbitSpline, see orbits.jl
 
-    if isempty(Js)
+    if !isempty(orbits[1].path.jacdets)
+        J = Array{Vector{Float64}}(undef, n)
+        for (io,o) in enumerate(orbits) 
+            J[io] = o.path.jacdets
+        end
+    elseif isempty(Js)
         J = Array{Vector{Float64}}(undef, n)
         @inbounds Threads.@threads for i=1:n
             oi = orbits[i]::Orbit
