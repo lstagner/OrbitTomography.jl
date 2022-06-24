@@ -38,20 +38,30 @@ function orbit_grid(M::AbstractEquilibrium, eo::AbstractVector, po::AbstractVect
         ie,ip,ir = Tuple(subs[i])
         c = EPRCoordinate(M,eo[ie],po[ip],ro[ir],q=q,amu=amu)
 
-        try
-            if calculate_jacdets 
-                o = get_orbit(M, c; store_path=true, kwargs...)
-                jacdets = GuidingCenterOrbits.get_jacobian(M,o,tol=tol)
-                o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,OrbitPath(o.path,jacdets),o.gcvalid)
-            else
-                o = get_orbit(M, c; kwargs...)
-            end
-        catch
-            o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
-        end
+        o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
 
-        if o.class in (:incomplete,:invalid,:lost)
-            o = Orbit(o.coordinate,:incomplete)
+        if calculate_jacdets 
+            try
+                o = get_orbit(M, c; store_path=true, kwargs...)
+                if o.class in (:incomplete,:invalid,:lost)
+                    o = Orbit(o.coordinate,:incomplete)
+                else
+                    jacdets = GuidingCenterOrbits.get_jacobian(M,o,tol=tol)
+                    o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,OrbitPath(o.path,jacdets),o.gcvalid)
+                end
+            catch
+                o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
+            end
+        else
+            try
+                o = get_orbit(M, c; kwargs...)
+            catch
+                o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
+            end
+
+            if o.class in (:incomplete,:invalid,:lost)
+                o = Orbit(o.coordinate,:incomplete)
+            end
         end
 
         o

@@ -463,7 +463,7 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy,opitch,or,PS_orbs::Vector{GCEP
     end
 end
 
-function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Vector{Orbit{T,S}}, PS_orbs::Vector{GCEPRCoordinate}; vers=2, verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0) where {T,S}
+function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}, PS_orbs::Vector{GCEPRCoordinate}; vers=2, verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0) where {T,S}
     p = Progress(length(orbs))
     verbose && print("Sorting orbits into types.\n")
 
@@ -604,7 +604,7 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Vector{Orbit{T,S}}, PS_
     return vec(PS_dist)
 end
 
-function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Vector{Orbit{T,S}}, psgrid::PSGrid, sigma;
+function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}, psgrid::PSGrid, sigma;
                             distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
                             covariance=:local, norms=S3(1.0,1.0,1.0),
                             checkpoint=true, warmstart=false,file="eprz_progress.jld2",  rescale_factor= 0.0, kwargs...) where {T,S}
@@ -626,7 +626,7 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return F_ps_VEC
 end
 
-function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Vector{Orbit{T,S}}, sigma;
+function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}, sigma;
                             Js=Vector{Vector{Float64}}[],
                             energy=range(1.0,80.0,length=25),
                             pitch=range(-0.99,0.99,length=25),
@@ -715,7 +715,7 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return EPRZDensity(f_eprz,energy,pitch,r,z)
 end
 
-function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Vector{Orbit{T,S}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) where {T,S}
+function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) where {T,S}
     length(size(F_ps_Weights))>1 ? (matrix_input=true) :  (matrix_input=false)
 
     if distributed 
@@ -878,7 +878,7 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::V
     return vec(F_os_VEC)
 end
 
-function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Vector{Orbit{T,S}}; k::Int=2, vers=1, distributed=false, rescale_factor=0.0) where {T,S} #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
+function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}; k::Int=2, vers=1, distributed=false, rescale_factor=0.0) where {T,S} #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
     num_psorbs = length(PS_orbs)
 
     if distributed
@@ -966,7 +966,7 @@ function ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_
     return ps2epr_sampled(M, wall, F_ps_Weights, psgrid.energy, psgrid.pitch, psgrid.r, psgrid.z, og; numOsamples=numOsamples, progress_prefactor = progress_prefactor, two_pi_mod = two_pi_mod, genuine_PS_weights = genuine_PS_weights, verbose=verbose, GCP = GCP, distributed=distributed, nbatch = nbatch, saveProgress=saveProgress, kwargs...) 
 end
 
-function ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, energy::AbstractVector{Float64}, pitch::AbstractVector{Float64}, R::AbstractVector{Float64}, Z::AbstractVector{Float64}, og::OrbitGrid; numOsamples::Int64, progress_prefactor = "_", two_pi_mod = false, genuine_PS_weights = false, verbose=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, saveProgress=true, kwargs...) 
+function ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, energy::AbstractVector{Float64}, pitch::AbstractVector{Float64}, R::AbstractVector{Float64}, Z::AbstractVector{Float64}, og::OrbitGrid; numOsamples::Int64, progress_prefactor = "_", two_pi_mod = false, genuine_PS_weights = true, verbose=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, saveProgress=true, kwargs...) 
     if length(size(F_ps_Weights)) == 1
         error("Call ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, psgrid::PSGrid, og::OrbitGrid) with PSGrid.")
     end
