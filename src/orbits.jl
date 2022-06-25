@@ -290,7 +290,7 @@ function get4DVols(E, p, R, Z)
     return dvols
 end
 
-function orbit_matrix(M::AbstractEquilibrium, grid::OrbitGrid, energy, pitch, r, z; kwargs...)
+function orbit_matrix(M::AbstractEquilibrium, grid::OrbitGrid, energy, pitch, r, z; m::Float64 = H2_amu*mass_u, q::Int = 1, kwargs...)
     nenergy = length(energy)
     npitch = length(pitch)
     nr = length(r)
@@ -301,7 +301,7 @@ function orbit_matrix(M::AbstractEquilibrium, grid::OrbitGrid, energy, pitch, r,
 
     R = @showprogress @distributed (hcat) for i=1:nsubs
         ie,ip,ir,iz = Tuple(subs[i])
-        gcp = GCParticle(energy[ie],pitch[ip],r[ir],z[iz])
+        gcp = GCParticle(energy[ie],pitch[ip],r[ir],z[iz],m,q)
         o = get_orbit(M,gcp;store_path=false,kwargs...)
         Rcol = spzeros(norbits)
         if !(o.class in (:lost,:incomplete)) && o.coordinate.r > magnetic_axis(M)[1]
