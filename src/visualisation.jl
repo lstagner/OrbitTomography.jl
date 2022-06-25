@@ -511,12 +511,11 @@ function Overplot_topological_contour(ogrid,f,ogrid_Energy_Ind,energy_slice; col
 
         topoMap_tot = zeros(res,res)
 
-        p = Progress(npoints)
+        
 
-        for l=1:npoints
+        @showprogress for l=1:npoints
             i,j = Tuple(subs[l])
             topoMap_tot[i,j] = assign_topological_height(energy_slice, pm_array[i], Rm_array[j],max_difference=true)
-            ProgressMeter.next!(p)
         end
 
         levels = range(-5,15,step = 0.5)
@@ -869,12 +868,9 @@ function plot_topological_contour(ogrid; res = 0,energy_ind = 1, distributed = f
 
         topoMap_tot = zeros(res,res)
 
-        p = Progress(npoints)
-
-        for l=1:npoints
+        @showprogress for l=1:npoints
             i,j = Tuple(subs[l])
             topoMap_tot[i,j] = assign_topological_height(ogrid, pm_array[i], Rm_array[j])
-            ProgressMeter.next!(p)
         end
 
         levels = range(-1,11,step = 0.005)

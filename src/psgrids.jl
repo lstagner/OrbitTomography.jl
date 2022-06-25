@@ -120,10 +120,8 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
             o
         end
     else
-        p = Progress(npoints)
-
         psorbs = GCEPRCoordinate[]
-        for i=1:npoints
+        @showprogress for i=1:npoints
             ie,ip,ir,iz = Tuple(subs[i])
             c = GCParticle(energy[ie],pitch[ip],r[ir],z[iz],amu*OrbitTomography.mass_u,q)
 
@@ -141,7 +139,6 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
                 o = GCEPRCoordinate(c,:incomplete) 
             end
 
-            ProgressMeter.next!(p)
             push!(psorbs,o)
         end
     end
@@ -403,20 +400,15 @@ function read_GCEPRCoords(filename;verbose=true)
     coords = GCEPRCoordinate[]
 
     verbose && print("Appending Orbits\n")
-    prog = Progress(length(E))
 
     if length(gcvalids) == 0
-        for i=1:length(E)
+        @showprogress for i=1:length(E)
             c = GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],nothing,m,q)
-
-            ProgressMeter.next!(prog)
             push!(coords,c)
         end
     else
-        for i=1:length(E)
+        @showprogress for i=1:length(E)
             c = GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],gcvalids[i],m,q)
-
-            ProgressMeter.next!(prog)
             push!(coords,c)
         end
     end
@@ -632,18 +624,14 @@ This function is used internally within reconstruct_PSGrid to read batches of GC
 function reconstruct_GCEPRCoords(filename_prefactor::String, batch::Int, loop_batches::Int)
     total_GCEPRCoords = GCEPRCoordinate[]
     batch_error = Int[]
-    p = Progress(loop_batches+1)
 
-    for j=1:(loop_batches+1)
+    @showprogress for j=1:(loop_batches+1)
         try
             coords,vacuum,drift = read_GCEPRCoords(string(filename_prefactor,"_batch(",batch,")",j,"of",(loop_batches+1), "_GCEPRCoords.h5");verbose=false) 
             append!(total_GCEPRCoords,coords)
         catch
             push!(batch_error,j)
-            ProgressMeter.next!(p)
-            continue
         end
-        ProgressMeter.next!(p)
     end
 
     if length(batch_error)>0

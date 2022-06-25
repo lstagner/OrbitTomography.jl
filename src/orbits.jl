@@ -299,29 +299,19 @@ function orbit_matrix(M::AbstractEquilibrium, grid::OrbitGrid, energy, pitch, r,
     subs = CartesianIndices((nenergy,npitch,nr,nz))
     nsubs = length(subs)
 
-    p = Progress(nsubs)
-    channel = RemoteChannel(()->Channel{Bool}(nsubs), 1)
-    R = fetch(@sync begin
-        @async while take!(channel)
-            ProgressMeter.next!(p)
+    R = @showprogress @distributed (hcat) for i=1:nsubs
+        ie,ip,ir,iz = Tuple(subs[i])
+        gcp = GCParticle(energy[ie],pitch[ip],r[ir],z[iz])
+        o = get_orbit(M,gcp;store_path=false,kwargs...)
+        Rcol = spzeros(norbits)
+        if !(o.class in (:lost,:incomplete)) && o.coordinate.r > magnetic_axis(M)[1]
+            oi = orbit_index(grid,o.coordinate)
+            (oi > 0) && (Rcol[oi] = 1.0)
         end
-        @async begin
-            R = @distributed (hcat) for i=1:nsubs
-                ie,ip,ir,iz = Tuple(subs[i])
-                gcp = GCParticle(energy[ie],pitch[ip],r[ir],z[iz])
-                o = get_orbit(M,gcp;store_path=false,kwargs...)
-                Rcol = spzeros(norbits)
-                if !(o.class in (:lost,:incomplete)) && o.coordinate.r > magnetic_axis(M)[1]
-                    oi = orbit_index(grid,o.coordinate)
-                    (oi > 0) && (Rcol[oi] = 1.0)
-                end
-                put!(channel,true)
-                Rcol
-            end
-            put!(channel,false)
-            R
-        end
-    end)
+
+        Rcol
+    end
+
     return R
 end
 
@@ -502,25 +492,13 @@ function combine_orbits(orbits)
 end
 
 function mc2orbit(M::AbstractEquilibrium, d::FIDASIMGuidingCenterParticles, GCP::T;  kwargs...) where T <: Function
-    p = Progress(d.npart)
-    channel = RemoteChannel(()->Channel{Bool}(d.npart),1)
+    orbs = @showprogress @distributed (vcat) for i=1:d.npart
+        o = get_orbit(M,GCP(d.energy[i],B0Ip_sign(M)*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
 
-    t = @sync begin
-        @async while take!(channel)
-            ProgressMeter.next!(p)
-        end
-
-        @async begin
-            orbs = @distributed (vcat) for i=1:d.npart
-                o = get_orbit(M,GCP(d.energy[i],B0Ip_sign(M)*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
-                put!(channel,true)
-                o.coordinate
-            end
-            put!(channel,false)
-            orbs
-        end
+        o.coordinate
     end
-    return fetch(t)
+
+    return orbs
 end
 
 function fbm2orbit(M::AbstractEquilibrium,d::FIDASIMGuidingCenterFunction; GCP=GCDeuteron, n=1_000_000, kwargs...)
