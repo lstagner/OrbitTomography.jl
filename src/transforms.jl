@@ -199,29 +199,36 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy,opitch,or,PS_orbs::Vector{GCEP
     dr = or[2]-or[1]
 
     if distributed
-        F_ps_VEC = @showprogress @distributed (vcat) for iter=1:num_orbs
-            i = argmin(abs.(PS_orbs[iter].energy .- oenergy))
-            j = argmin(abs.(PS_orbs[iter].pitch_m .- opitch))
-            k = argmin(abs.(PS_orbs[iter].r_m .- or))
+        @eval @everywhere begin
+            #PS_orbs = $PS_orbs
+            og_orbit_index = $og_orbit_index
+            og_class = $og_class
+            F_os_VEC = $F_os_VEC
+        end
+
+        F_ps_VEC = @showprogress @distributed (vcat) for PS_orbs_i in PS_orbs
+            i = argmin(abs.(PS_orbs_i.energy .- oenergy))
+            j = argmin(abs.(PS_orbs_i.pitch_m .- opitch))
+            k = argmin(abs.(PS_orbs_i.r_m .- or))
             ind = og_orbit_index[i,j,k]
 
             if ind != 0
-                F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
+                F_ps_i = F_os_VEC[ind]*PS_orbs_i.jacdet
             else 
                 F_ps_i = 0.0
             end
 
             #Checking Energy Bounds:
-            if (PS_orbs[iter].energy > (oenergy[end]+0.5*(oenergy[end]-oenergy[end-1]))) || (PS_orbs[iter].energy < (oenergy[1]-0.5*(oenergy[2]-oenergy[1]))) || (PS_orbs[iter].energy < 0.0)
+            if (PS_orbs_i.energy > (oenergy[end]+0.5*(oenergy[end]-oenergy[end-1]))) || (PS_orbs_i.energy < (oenergy[1]-0.5*(oenergy[2]-oenergy[1]))) || (PS_orbs_i.energy < 0.0)
                 F_ps_i = 0.0
             end
             #Checking Pitch Bounds:
             if opitch[end]>opitch[1]
-                if (PS_orbs[iter].pitch_m > (opitch[end]+0.5*abs(opitch[end]-opitch[end-1]))) || (PS_orbs[iter].pitch_m < (opitch[1]-0.5*abs(opitch[2]-opitch[1]))) || abs(PS_orbs[iter].pitch_m) > 1.0
+                if (PS_orbs_i.pitch_m > (opitch[end]+0.5*abs(opitch[end]-opitch[end-1]))) || (PS_orbs_i.pitch_m < (opitch[1]-0.5*abs(opitch[2]-opitch[1]))) || abs(PS_orbs_i.pitch_m) > 1.0
                     F_ps_i = 0.0
                 end
             else
-                if (PS_orbs[iter].pitch_m < (opitch[end]-0.5*abs(opitch[end]-opitch[end-1]))) || (PS_orbs[iter].pitch_m > (opitch[1]+0.5*abs(opitch[2]-opitch[1]))) || abs(PS_orbs[iter].pitch_m) > 1.0
+                if (PS_orbs_i.pitch_m < (opitch[end]-0.5*abs(opitch[end]-opitch[end-1]))) || (PS_orbs_i.pitch_m > (opitch[1]+0.5*abs(opitch[2]-opitch[1]))) || abs(PS_orbs_i.pitch_m) > 1.0
                     F_ps_i = 0.0
                 end
             end
@@ -230,8 +237,8 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy,opitch,or,PS_orbs::Vector{GCEP
             F_ps_i
         end
     else
-        F_ps_VEC = Float64[] 
-        p = Progress(num_orbs)
+        F_ps_VEC = Vector{Float64}(undef, num_orbs)
+        
 
         if mislabelled 
             mislabelled_PSOrb_Ints = Int[]
@@ -245,7 +252,7 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy,opitch,or,PS_orbs::Vector{GCEP
             end
         end
 
-        for iter=1:num_orbs
+        @showprogress for iter=1:num_orbs
             i = argmin(abs.(PS_orbs[iter].energy .- oenergy))
             j = argmin(abs.(PS_orbs[iter].pitch_m .- opitch))
             k = argmin(abs.(PS_orbs[iter].r_m .- or))
@@ -420,8 +427,7 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy,opitch,or,PS_orbs::Vector{GCEP
             end
             #Rely on wall for R-bounds
 
-            push!(F_ps_VEC,F_ps_i)
-            ProgressMeter.next!(p)
+            F_ps_VEC[iter] = F_ps_i
         end
     end
 
@@ -463,110 +469,19 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy,opitch,or,PS_orbs::Vector{GCEP
     end
 end
 
-function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}, PS_orbs::Vector{GCEPRCoordinate}; vers=2, verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0) where {T,S}
-    p = Progress(length(orbs))
+function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}, PS_orbs::Vector{GCEPRCoordinate}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
     verbose && print("Sorting orbits into types.\n")
 
-    if vers==1
-        ctr_passing_points = Array{Float64}(undef, 0,3)
-        ctr_passing_vals = Float64[]
-        trapped_points = Array{Float64}(undef, 0,3)
-        trapped_vals = Float64[]
-        co_passing_points = Array{Float64}(undef, 0,3)
-        co_passing_vals = Float64[]
+    ctr_passing_spline, trapped_spline, co_passing_spline = class_splines(orbs,F_os_VEC,k; stiffness_factor=stiffness_factor, kwargs...)
 
-        for (io,i) in enumerate(orbs)
-            if i.class == :ctr_passing
-                ctr_passing_points = vcat(ctr_passing_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]') #is this efficient?
-                push!(ctr_passing_vals,F_os_VEC[io])
-            end
-            if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
-                trapped_points = vcat(trapped_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]')
-                push!(trapped_vals,F_os_VEC[io])
-            end
-            if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
-                co_passing_points = vcat(co_passing_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]')
-                push!(co_passing_vals,F_os_VEC[io])
-            end
-            ProgressMeter.next!(p)
-        end
-    elseif vers==2
-        ctr_passing_points = Array{Float64}(undef, 3,0)
-        ctr_passing_vals = Float64[]
-        trapped_points = Array{Float64}(undef, 3,0)
-        trapped_vals = Float64[]
-        co_passing_points = Array{Float64}(undef, 3,0)
-        co_passing_vals = Float64[]
-
-        for (io,i) in enumerate(orbs)
-            if i.class == :ctr_passing
-                ctr_passing_points = hcat(ctr_passing_points,[i.coordinate.energy;i.coordinate.pitch;i.coordinate.r]) #is this efficient?
-                push!(ctr_passing_vals,F_os_VEC[io])
-            end
-            if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
-                trapped_points = hcat(trapped_points,[i.coordinate.energy;i.coordinate.pitch;i.coordinate.r])
-                push!(trapped_vals,F_os_VEC[io])
-            end
-            if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
-                co_passing_points = hcat(co_passing_points,[i.coordinate.energy;i.coordinate.pitch;i.coordinate.r])
-                push!(co_passing_vals,F_os_VEC[io])
-            end
-            ProgressMeter.next!(p)
-        end
-
-        ctr_passing_points = copy(transpose(ctr_passing_points))
-        trapped_points = copy(transpose(trapped_points))
-        co_passing_points = copy(transpose(co_passing_points))
-    elseif vers==3
-        ctr_passing_points = SVector{3, Float64}[]
-        ctr_passing_vals = Float64[]
-        trapped_points = SVector{3, Float64}[]
-        trapped_vals = Float64[]
-        co_passing_points = SVector{3, Float64}[]
-        co_passing_vals = Float64[]
-
-        ctr_passing_num = 0
-        trapped_num = 0
-        co_passing_num = 0
-
-        for (io,i) in enumerate(orbs)
-            if i.class == :ctr_passing
-                push!(ctr_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r)) #is this efficient?
-                push!(ctr_passing_vals,F_os_VEC[io])
-                ctr_passing_num += 1
-            end
-            if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
-                push!(trapped_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
-                push!(trapped_vals,F_os_VEC[io])
-                trapped_num += 1
-            end
-            if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
-                push!(co_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
-                push!(co_passing_vals,F_os_VEC[io])
-                co_passing_num += 1
-            end
-            ProgressMeter.next!(p)
-        end
-
-        ctr_passing_points = copy(transpose(reshape(reinterpret(Float64, ctr_passing_points), (3,ctr_passing_num))))
-        trapped_points = copy(transpose(reshape(reinterpret(Float64, trapped_points), (3,trapped_num))))
-        co_passing_points = copy(transpose(reshape(reinterpret(Float64, co_passing_points), (3,co_passing_num))))
-    end
-
-    ctr_passing_spline = PolyharmonicSpline(k,ctr_passing_points,ctr_passing_vals)
-    trapped_spline = PolyharmonicSpline(k,trapped_points,trapped_vals)
-    co_passing_spline = PolyharmonicSpline(k,co_passing_points,co_passing_vals)
-
+    verbose && print("Evaluating particle-space distribution values.\n")
     if distributed
         @eval @everywhere begin
             ctr_passing_spline = $ctr_passing_spline
             trapped_spline = $trapped_spline
             co_passing_spline = $co_passing_spline
         end
-    end
 
-    verbose && print("Evaluating particle-space distribution values.\n")
-    if distributed
         PS_dist = @showprogress @distributed (vcat) for i in PS_orbs
             if i.class == :ctr_passing
                 val = i.jacdet*ctr_passing_spline.(i.energy,i.pitch_m,i.r_m)
@@ -579,9 +494,8 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{T,S}
             val
         end
     else
-        p = Progress(length(PS_orbs))
-        PS_dist = Float64[]
-        for i in PS_orbs
+        PS_dist = Vector{Float64}(undef,length(PS_orbs))
+        @showprogress for i in PS_orbs
             if i.class == :ctr_passing
                 val = i.jacdet*ctr_passing_spline.(i.energy,i.pitch_m,i.r_m)
             elseif i.class == :co_passing
@@ -590,8 +504,7 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{T,S}
                 val = i.jacdet*trapped_spline.(i.energy,i.pitch_m,i.r_m)
             end
 
-            push!(PS_dist,val)
-            ProgressMeter.next!(p)
+            PS_dist[i] = val
         end
     end
 
@@ -604,10 +517,127 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{T,S}
     return vec(PS_dist)
 end
 
-function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}, psgrid::PSGrid, sigma;
+function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}, F_os_VEC::Vector{Float64}, k::Int; vers::Int=2, read_save_centers::Bool = false, read_dir::String = "", filename_prefactor::String = "",  write_dir::String = "", stiffness_factor::Float64=0.0, verbose::Bool=true)  
+    if !read_save_centers
+        ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs; vers=vers)
+
+        ctr_passing_spline = PolyharmonicSpline(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
+        trapped_spline = PolyharmonicSpline(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
+        co_passing_spline = PolyharmonicSpline(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
+
+    else 
+        !isempty(read_dir) && cd(read_dir)
+        filename = string(filename_prefactor,"sorted_orbs.jld2") #read_orbs
+
+        if isfile(filename)
+            verbose && print("Reading sorted orbs from file.\n")
+            @load filename ctr_passing_points trapped_points co_passing_points ctr_passing_inds trapped_inds co_passing_inds
+        else
+            !isempty(write_dir) && cd(write_dir)
+            verbose && print("Printing sorted orbs to file.\n")
+
+            ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs; vers=vers)
+            @save filename ctr_passing_points trapped_points co_passing_points ctr_passing_inds trapped_inds co_passing_inds
+        end
+
+        ctr_passing_spline = PolyharmonicSpline(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
+        trapped_spline = PolyharmonicSpline(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
+        co_passing_spline = PolyharmonicSpline(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
+    end
+
+    return ctr_passing_spline, trapped_spline, co_passing_spline
+end
+
+function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}; vers::Int=2)  
+    if vers==1
+        ctr_passing_points = Array{Float64}(undef, 0,3)
+        ctr_passing_inds = Int[]
+        trapped_points = Array{Float64}(undef, 0,3)
+        trapped_inds = Int[]
+        co_passing_points = Array{Float64}(undef, 0,3)
+        co_passing_inds = Int[]
+
+        @showprogress for (io,i) in enumerate(orbs)
+            if i.class == :ctr_passing
+                ctr_passing_points = vcat(ctr_passing_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]') #is this efficient?
+                push!(ctr_passing_inds,io)
+            end
+            if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
+                trapped_points = vcat(trapped_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]')
+                push!(trapped_inds,io)
+            end
+            if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+                co_passing_points = vcat(co_passing_points,[i.coordinate.energy,i.coordinate.pitch,i.coordinate.r]')
+                push!(co_passing_inds,io)
+            end
+            
+        end
+    elseif vers==2
+        ctr_passing_points = Array{Float64}(undef, 3,0)
+        ctr_passing_inds = Int[]
+        trapped_points = Array{Float64}(undef, 3,0)
+        trapped_inds = Int[]
+        co_passing_points = Array{Float64}(undef, 3,0)
+        co_passing_inds = Int[]
+
+        @showprogress for (io,i) in enumerate(orbs)
+            if i.class == :ctr_passing
+                ctr_passing_points = hcat(ctr_passing_points,[i.coordinate.energy;i.coordinate.pitch;i.coordinate.r]) #is this efficient?
+                push!(ctr_passing_inds,io)
+            end
+            if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
+                trapped_points = hcat(trapped_points,[i.coordinate.energy;i.coordinate.pitch;i.coordinate.r])
+                push!(trapped_inds,io)
+            end
+            if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+                co_passing_points = hcat(co_passing_points,[i.coordinate.energy;i.coordinate.pitch;i.coordinate.r])
+                push!(co_passing_inds,io)
+            end
+            
+        end
+    elseif vers==3
+        ctr_passing_points = SVector{3, Float64}[]
+        ctr_passing_inds = Int[]
+        trapped_points = SVector{3, Float64}[]
+        trapped_inds = Int[]
+        co_passing_points = SVector{3, Float64}[]
+        co_passing_inds = Int[]
+
+        ctr_passing_num = 0
+        trapped_num = 0
+        co_passing_num = 0
+
+        @showprogress for (io,i) in enumerate(orbs)
+            if i.class == :ctr_passing
+                push!(ctr_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r)) #is this efficient?
+                push!(ctr_passing_inds,io)
+                ctr_passing_num += 1
+            end
+            if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
+                push!(trapped_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
+                push!(trapped_inds,io)
+                trapped_num += 1
+            end
+            if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+                push!(co_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
+                push!(co_passing_inds,io)
+                co_passing_num += 1
+            end
+            
+        end
+
+        ctr_passing_points = copy(reshape(reinterpret(Float64, ctr_passing_points), (3,ctr_passing_num)))
+        trapped_points =  copy(reshape(reinterpret(Float64, trapped_points), (3,trapped_num)))
+        co_passing_points =  copy(reshape(reinterpret(Float64, co_passing_points), (3,co_passing_num)))
+    end
+
+    return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
+end
+
+function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}, psgrid::PSGrid, sigma;
                             distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
                             covariance=:local, norms=S3(1.0,1.0,1.0),
-                            checkpoint=true, warmstart=false,file="eprz_progress.jld2",  rescale_factor= 0.0, kwargs...) where {T,S}
+                            checkpoint=true, warmstart=false,file="eprz_progress.jld2",  rescale_factor= 0.0, kwargs...) 
 
     Js = Array{Vector{Float64}}(undef, length(orbs))
     for (io,o) in enumerate(orbs) 
@@ -626,7 +656,7 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return F_ps_VEC
 end
 
-function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}, sigma;
+function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}, sigma;
                             Js=Vector{Vector{Float64}}[],
                             energy=range(1.0,80.0,length=25),
                             pitch=range(-0.99,0.99,length=25),
@@ -634,7 +664,7 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
                             z = range(limits(M)[2]...,length=25),
                             distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
                             covariance=:local, norms=S3(1.0,1.0,1.0),
-                            checkpoint=true, warmstart=false,file="eprz_progress.jld2", kwargs...) where {T,S}
+                            checkpoint=true, warmstart=false,file="eprz_progress.jld2", kwargs...) 
 
     if isempty(Js) && (!isempty(orbs[1].path.jacdets))
         Js = Array{Vector{Float64}}(undef, length(orbs))
@@ -715,10 +745,24 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return EPRZDensity(f_eprz,energy,pitch,r,z)
 end
 
-function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) where {T,S}
+function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) 
     length(size(F_ps_Weights))>1 ? (matrix_input=true) :  (matrix_input=false)
 
     if distributed 
+        psenergy = PS_Grid.energy
+        pspitch = PS_Grid.pitch
+        psr = PS_Grid.r
+        psz = PS_Grid.z
+        pspoint_index = PS_Grid.point_index
+
+        @eval @everywhere begin
+            psenergy = $psenergy
+            pspitch = $pspitch
+            psr = $psr
+            psz = $psz
+            pspoint_index = $pspoint_index
+        end
+
         F_os_VEC = @showprogress @distributed (vcat) for iter=1:length(og_orbs)
             orb = og_orbs[iter]
             integrated_weight = 0.0
@@ -736,11 +780,11 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::U
             end
 
             for path_iter = 1:(length(orb.path.r)-1)
-                i = argmin(abs.(orb.path.energy[path_iter] .- PS_Grid.energy))
-                j = argmin(abs.(orb.path.pitch[path_iter] .- PS_Grid.pitch))
-                k = argmin(abs.(orb.path.r[path_iter] .- PS_Grid.r))
-                l = argmin(abs.(orb.path.z[path_iter] .- PS_Grid.z))
-                ind = PS_Grid.point_index[i,j,k,l]
+                i = argmin(abs.(orb.path.energy[path_iter] .- psenergy))
+                j = argmin(abs.(orb.path.pitch[path_iter] .- pspitch))
+                k = argmin(abs.(orb.path.r[path_iter] .- psr))
+                l = argmin(abs.(orb.path.z[path_iter] .-psz))
+                ind = pspoint_index[i,j,k,l]
 
                 if bin_info
                     path_inds[path_iter,:] = [i,j,k,l]
@@ -756,16 +800,16 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::U
                 end
 
                 #Checking Energy Bounds:
-                if (orb.path.energy[path_iter] > (PS_Grid.energy[end]+0.5*(PS_Grid.energy[end]-PS_Grid.energy[end-1]))) || (orb.path.energy[path_iter] < (PS_Grid.energy[1]-0.5*(PS_Grid.energy[2]-PS_Grid.energy[1]))) || (orb.path.energy[path_iter] < 0.0)
+                if (orb.path.energy[path_iter] > (psenergy[end]+0.5*(psenergy[end]-psenergy[end-1]))) || (orb.path.energy[path_iter] < (psenergy[1]-0.5*(psenergy[2]-psenergy[1]))) || (orb.path.energy[path_iter] < 0.0)
                     F_os_i = 0.0
                 end
                 #Checking Pitch Bounds:
-                if PS_Grid.pitch[end]>PS_Grid.pitch[1]
-                    if (orb.path.pitch[path_iter] > (PS_Grid.pitch[end]+0.5*abs(PS_Grid.pitch[end]-PS_Grid.pitch[end-1]))) || (orb.path.pitch[path_iter] < (PS_Grid.pitch[1]-0.5*abs(PS_Grid.pitch[2]-PS_Grid.pitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
+                if pspitch[end]>pspitch[1]
+                    if (orb.path.pitch[path_iter] > (pspitch[end]+0.5*abs(pspitch[end]-pspitch[end-1]))) || (orb.path.pitch[path_iter] < (pspitch[1]-0.5*abs(pspitch[2]-pspitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
                         F_os_i = 0.0
                     end
                 else
-                    if (orb.path.pitch[path_iter] < (PS_Grid.pitch[end]-0.5*abs(PS_Grid.pitch[end]-PS_Grid.pitch[end-1]))) || (orb.path.pitch[path_iter] > (PS_Grid.pitch[1]+0.5*abs(PS_Grid.pitch[2]-PS_Grid.pitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
+                    if (orb.path.pitch[path_iter] < (pspitch[end]-0.5*abs(pspitch[end]-pspitch[end-1]))) || (orb.path.pitch[path_iter] > (pspitch[1]+0.5*abs(pspitch[2]-pspitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
                         F_os_i = 0.0
                     end
                 end
@@ -787,9 +831,8 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::U
             F_os_VEC = Float64[]
         end
 
-        p = Progress(length(og_orbs))
 
-        for iter=1:length(og_orbs)
+        @showprogress for iter=1:length(og_orbs)
             orb = og_orbs[iter]
             integrated_weight = 0.0
 
@@ -847,17 +890,17 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::U
                     integrated_weight += F_os_i*(0.5*orb.path.dt[path_iter]+0.5*orb.path.dt[path_iter-1])/orb.tau_p
                 end
             end 
-            ProgressMeter.next!(p)
+            
 
             (bin_info || jac_info) ? push!(F_os_VEC,PSDist2EPR_info(integrated_weight,path_inds,path_jacs)) : push!(F_os_VEC,integrated_weight) 
         end
     end
 
     if (bin_info || jac_info)
-        F_os = Float64[]
+        F_os = Vector{Float64}(undef,length(og_orbs))
 
         for i=1:length(og_orbs)
-            push!(F_os,F_os_VEC[i].orbit_weight)
+            F_os[i] = F_os_VEC[i].orbit_weight
         end
 
         if rescale_factor == 1.0
@@ -878,34 +921,54 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::U
     return vec(F_os_VEC)
 end
 
-function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{T,S}},Vector{Orbit}}; k::Int=2, vers=1, distributed=false, rescale_factor=0.0) where {T,S} #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
+#Split into two functions!!! splinemaker and epr_spline_eval
+function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}; k::Int=2, vers::Int=1, distributed=false, rescale_factor=0.0, verbose=true, psorb_matrix_prefactor::String = "", read_save_centers::Bool = false)  #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
     num_psorbs = length(PS_orbs)
+
+    !isempty(psorb_matrix_prefactor) && (read_save_centers = true)
+    psorb_matrix_filename = string(psorb_matrix_prefactor,"psorb_centers.jld2")
+
+    if read_save_centers && isfile(psorb_matrix_filename)
+        verbose && print("Reading spline centers from file.\n")
+        @load psorb_matrix_filename points
+    else
+        verbose && print("Calculating spline centers.\n")
+        if distributed
+            points = psorbs_2_matrix_DIST(PS_orbs; vers=vers)
+        else
+            if vers==1
+                points = psorbs_2_matrix(PS_orbs)
+            elseif vers==2
+                points = psorbs_2_matrix_INV(PS_orbs)
+            end
+        end
+        if read_save_centers
+            verbose && print("Printing spline centers to file.\n")
+            @save psorb_matrix_filename points
+        end
+    end
+
+    verbose && print("Generating particle-space spline.\n")
+    if distributed
+        if vers==1 || vers==3
+            spline = PolyharmonicSpline(k,points,F_ps_Weights)
+        elseif vers==2 || vers==4
+            spline = PolyharmonicSplineInv(k,points,F_ps_Weights)
+        end
+    else
+        if vers==1
+            spline = PolyharmonicSpline(k,points,F_ps_Weights)
+        elseif vers==2
+            spline = PolyharmonicSplineInv(k,points,F_ps_Weights)
+        end
+    end
+
+    verbose && print("Calculating orbit-space distribution.\n")
 
     if distributed
         @eval @everywhere begin
-            PS_orbs = $PS_orbs
             og_orbs = $og_orbs
-        end
-
-        if vers == 1
-            points = SharedArray{Float64}(length(F_ps_Weights),4)
-            @distributed for i = 1:num_psorbs
-                points[i,:] = [PS_orbs[i].energy,PS_orbs[i].pitch,PS_orbs[i].r,PS_orbs[i].z]'
-            end
-
-            spline = PolyharmonicSpline(k,convert(Array,points),F_ps_Weights)
-        elseif vers == 2
-            points = @distributed (vcat) for i = 1:num_psorbs
-                [PS_orbs[i].energy,PS_orbs[i].pitch,PS_orbs[i].r,PS_orbs[i].z]'
-            end
-
-            spline = PolyharmonicSpline(k,points,F_ps_Weights)
-        elseif vers == 3 #this one slowest at small scale
-            points = @distributed (hcat) for i = 1:num_psorbs
-                [PS_orbs[i].energy;PS_orbs[i].pitch;PS_orbs[i].r;PS_orbs[i].z]
-            end
-
-            spline = PolyharmonicSpline(k,copy(transpose(points)),F_ps_Weights)
+            spline = $spline
         end
 
         os_dist = @showprogress @distributed (vcat) for i in og_orbs
@@ -924,16 +987,9 @@ function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoor
             integrated_weight
         end
     else
-        points = Array{Float64}(undef, 0,4)
+        os_dist =  Vector{Float64}(undef,length(og_orbs))
 
-        for i in PS_orbs
-            points = vcat(points, [i.energy,i.pitch,i.r,i.z]')
-        end
-
-        spline = PolyharmonicSpline(k,points,F_ps_Weights)
-
-        os_dist = Float64[]
-        for i in og_orbs
+        @showprogress for (io,i) in enumerate(og_orbs)
             integrated_weight = 0.0
 
             for p in 1:length(i.path.r)
@@ -946,7 +1002,7 @@ function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoor
                 end
             end
 
-            push!(os_dist,integrated_weight)
+            os_dist[io] = integrated_weight
         end
     end
 
@@ -956,6 +1012,57 @@ function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoor
         os_dist =  (os_dist ./ sum(abs.(os_dist))) .* rescale_factor
     end
     return vec(os_dist)
+end
+
+function psorbs_2_matrix_DIST(PS_orbs::Vector{GCEPRCoordinate}; vers::Int=1)
+    @eval @everywhere PS_orbs = $PS_orbs
+
+    num_psorbs = length(PS_orbs)
+
+    if vers == 1
+        points = SharedArray{Float64}(num_psorbs,4)
+        @distributed for i = 1:num_psorbs
+            points[i,:] = [PS_orbs[i].energy,PS_orbs[i].pitch,PS_orbs[i].r,PS_orbs[i].z]
+        end
+
+        return convert(Array,points)
+
+    elseif vers == 2
+        points = SharedArray{Float64}(4,num_psorbs)
+        @distributed for i = 1:num_psorbs
+            points[:,i] = [PS_orbs[i].energy,PS_orbs[i].pitch,PS_orbs[i].r,PS_orbs[i].z]
+        end
+
+        return convert(Array,points)
+    elseif vers == 3
+        points = @distributed (vcat) for i = 1:num_psorbs
+            [PS_orbs[i].energy,PS_orbs[i].pitch,PS_orbs[i].r,PS_orbs[i].z]'
+        end
+
+        return points
+    elseif vers == 4 
+        points = @distributed (hcat) for i = 1:num_psorbs
+            [PS_orbs[i].energy;PS_orbs[i].pitch;PS_orbs[i].r;PS_orbs[i].z]
+        end
+
+        return points
+    end
+end
+
+function psorbs_2_matrix(PS_orbs::Vector{GCEPRCoordinate})
+    points = Array{Float64}(undef,length(PS_orbs),4)
+    for i = 1:length(PS_orbs)
+        points[i,:] = [PS_orbs[i].energy,PS_orbs[i].pitch,PS_orbs[i].r,PS_orbs[i].z]
+    end
+    return points
+end
+
+function psorbs_2_matrix_INV(PS_orbs::Vector{GCEPRCoordinate})
+    points = Array{Float64}(undef,4,length(PS_orbs))
+    for i = 1:length(PS_orbs)
+        points[:,i] = [PS_orbs[i].energy,PS_orbs[i].pitch,PS_orbs[i].r,PS_orbs[i].z]
+    end
+    return points
 end
 
 function ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, psgrid::PSGrid, og::OrbitGrid; numOsamples::Int64, progress_prefactor = "_", two_pi_mod = false, genuine_PS_weights = false, verbose=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, saveProgress=true, kwargs...) 

@@ -108,6 +108,7 @@ export OrbitSystem, lcurve_point, lcurve, marginal_loglike, optimize_alpha!, est
 
 include("transforms.jl")
 export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution, epr2ps, epr2ps_splined, ps2epr, ps2epr_splined, ps2epr_sampled, epr2ps_covariance_splined
+export orbsort, class_splines, psorbs_2_matrix, psorbs_2_matrix_INV, psorbs_2_matrix_DIST
 
 include("analytic.jl")
 export lnΔ_ee, lnΔ_ei, lnΔ_ii, slowing_down_time, critical_energy, approx_critical_energy
