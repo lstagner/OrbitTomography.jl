@@ -151,8 +151,8 @@ function make_output_func(M::AbstractEquilibrium,classify_orbits::Bool,gcvalid_c
                         mu = getindex.(sol.u,5)
                         pitch = get_pitch.(M, m, ppara, mu, r, z)
 
-                        class = GuidingCenterOrbits.classify(r,z,pitch,magnetic_axis(M))
-                    return ((GCEPRCoordinate(energy,p0,r0,z0,pm,rm,zm,tm,class,tau_p,tau_t,0.0,nothing,m,q),i),false)
+                        class = class_char(classify(r,z,pitch,magnetic_axis(M)))
+                    return ((GCEPRCoordinate(energy,p0,r0,z0,pm,rm,zm,tm,class,tau_p,tau_t,0.0,false,m,q),i),false)
                 else
                     return (nothing,false)
                 end
@@ -202,7 +202,7 @@ function make_output_func(M::AbstractEquilibrium,classify_orbits::Bool,gcvalid_c
                         mu = getindex.(sol.u,5)
                         pitch = get_pitch.(M, m, ppara, mu, r, z)
 
-                        class = GuidingCenterOrbits.classify(r,z,pitch,magnetic_axis(M))
+                        class = class_char(classify(r,z,pitch,magnetic_axis(M)))
                         gcvalid = gcde_check(M,energy,m,e0*q,r,phi,z,pitch)
                     return ((GCEPRCoordinate(energy,p0,r0,z0,pm,rm,zm,tm,class,tau_p,tau_t,0.0,gcvalid,m,q),i),false)
                 else
@@ -249,8 +249,8 @@ function make_output_func(M::AbstractEquilibrium,classify_orbits::Bool,gcvalid_c
                         mu = ForwardDiff.value.(getindex.(sol.u,5))
                         pitch = get_pitch.(M, m, ppara, mu, r, z)
 
-                        class = GuidingCenterOrbits.classify(r,z,pitch,magnetic_axis(M))
-                    return ((GCEPRCoordinate(energy,p0,r0,z0,ForwardDiff.value(pm),ForwardDiff.value(rm),ForwardDiff.value(zm),ForwardDiff.value(tm),class,ForwardDiff.value(tau_p),ForwardDiff.value(tau_t),jacdet,nothing,m,q),i),false)
+                        class = class_char(classify(r,z,pitch,magnetic_axis(M)))
+                    return ((GCEPRCoordinate(energy,p0,r0,z0,ForwardDiff.value(pm),ForwardDiff.value(rm),ForwardDiff.value(zm),ForwardDiff.value(tm),class,ForwardDiff.value(tau_p),ForwardDiff.value(tau_t),jacdet,false,m,q),i),false)
                 else
                     return (nothing,false)
                 end
@@ -296,7 +296,7 @@ function make_output_func(M::AbstractEquilibrium,classify_orbits::Bool,gcvalid_c
                         pitch = get_pitch.(M, m, ppara, mu, r, z)
 
                         gcvalid = gcde_check(M,energy,m,e0*q,r,phi,z,pitch)
-                        class = GuidingCenterOrbits.classify(r,z,pitch,magnetic_axis(M))
+                        class = class_char(classify(r,z,pitch,magnetic_axis(M)))
                     return ((GCEPRCoordinate(energy,p0,r0,z0,ForwardDiff.value(pm),ForwardDiff.value(rm),ForwardDiff.value(zm),ForwardDiff.value(tm),class,ForwardDiff.value(tau_p),ForwardDiff.value(tau_t),jacdet,gcvalid,m,q),i),false)
                 else
                     return (nothing,false)

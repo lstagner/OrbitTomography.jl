@@ -16,7 +16,7 @@ using DiffEqBase
 using OrdinaryDiffEq
 using DifferentialEquations
 using DiffEqGPU
-#using DistributedArrays
+using DistributedArrays
 using EFIT
 using Equilibrium
 using HDF5
@@ -89,7 +89,7 @@ export OrbitSpline
 
 include("psgrids.jl")
 export PSGrid, DET_GCPtoEPR, getGCEPRCoord, fill_PSGrid, fill_PSGrid_batch, reconstruct_GCEPRCoords, reconstruct_PSGrid
-export write_PSGrid, read_PSGrid, write_GCEPRCoords, read_GCEPRCoords, ps_VectorToMatrix, ps_MatrixToVector
+export write_PSGrid, read_PSGrid, write_GCEPRCoords, read_GCEPRCoords, write_GCEPRCoordsMatrix, matrix_GCEPRCoords, read_GCEPRCoordsMatrix, ps_VectorToMatrix, ps_MatrixToVector
 
 include("gpu_grids.jl")
 export fill_PSGridGPU
@@ -108,7 +108,7 @@ export OrbitSystem, lcurve_point, lcurve, marginal_loglike, optimize_alpha!, est
 
 include("transforms.jl")
 export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution, epr2ps, epr2ps_splined, ps2epr, ps2epr_splined, ps2epr_sampled, epr2ps_covariance_splined
-export orbsort, class_splines, psorbs_2_matrix, psorbs_2_matrix_INV, psorbs_2_matrix_DIST
+export orbsort, class_splines, psorbs_2_matrix, psorbs_2_matrix_INV, psorbs_2_matrix_DistributedForLoop
 
 include("analytic.jl")
 export lnΔ_ee, lnΔ_ei, lnΔ_ii, slowing_down_time, critical_energy, approx_critical_energy

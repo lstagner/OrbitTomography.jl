@@ -5,7 +5,7 @@ struct PSGrid{T}
     z::AbstractVector{T}
     counts::Vector{Int}
     point_index::Array{Int,4}
-    class::Array{Symbol,4}
+    class::Array{Char,4}
     tau_p::Array{T,4}
     tau_t::Array{T,4}
 end
@@ -33,7 +33,7 @@ function getGCEPRCoord(M::AbstractEquilibrium, wall::Union{Nothing,Wall},gcp::GC
         gcvalid = gcde_check(M, gcp, CleanPath) 
     else
         path, stat = integrate(M, gcp0; wall=wall,one_transit=true, r_callback=true, classify_orbit=true, store_path=false, drift=drift, vacuum=vacuum, toa=true, limit_phi=true, kwargs...)
-        gcvalid=nothing
+        gcvalid=false
     end
 
     if stat.class == :incomplete || stat.class == :lost
@@ -41,14 +41,14 @@ function getGCEPRCoord(M::AbstractEquilibrium, wall::Union{Nothing,Wall},gcp::GC
                     gcp.pitch,
                     gcp.r,
                     gcp.z,
-                    typeof(0.0),
-                    typeof(0.0),
-                    typeof(0.0),
-                    typeof(0.0),
-                    stat.class,
-                    typeof(0.0),
-                    typeof(0.0),
-                    typeof(0.0),
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    class_char(stat.class),
+                    0.0,
+                    0.0,
+                    0.0,
                     gcvalid,
                     gcp.m,
                     gcp.q)
@@ -70,7 +70,7 @@ function getGCEPRCoord(M::AbstractEquilibrium, wall::Union{Nothing,Wall},gcp::GC
                     ForwardDiff.value(stat.rm),
                     ForwardDiff.value(stat.zm),
                     ForwardDiff.value(tm),
-                    stat.class,
+                    class_char(stat.class),
                     ForwardDiff.value(stat.tau_p),
                     ForwardDiff.value(stat.tau_t),
                     jacdet,
@@ -84,17 +84,17 @@ end
 
 This function uses a distributed for loop to apply getGCEPRCoord to every point in a 4D grid specified by the vectors energy, pitch, r and z.
 """
-function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector;  q=1, amu=OrbitTomography.H2_amu, verbose = false, print_results = false, filename_prefactor = "", distributed=true, kwargs...)
+function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector;  q=1, amu=OrbitTomography.H2_amu, verbose = false, print_results = false, filename_prefactor = "", distributed=true,  gcvalid_check::Bool=false, kwargs...)
     nenergy = length(energy)
     npitch = length(pitch)
     nr = length(r)
     nz = length(z)
     subs = CartesianIndices((nenergy,npitch,nr,nz))
 
-        class = fill(:incomplete,(nenergy,npitch,nr,nz))
-        point_index = zeros(Int,nenergy,npitch,nr,nz)
-        tau_t = zeros(Float64,nenergy,npitch,nr,nz)
-        tau_p = zeros(Float64,nenergy,npitch,nr,nz)
+    class = fill('i',(nenergy,npitch,nr,nz))
+    point_index = zeros(Int,nenergy,npitch,nr,nz)
+    tau_t = zeros(Float64,nenergy,npitch,nr,nz)
+    tau_p = zeros(Float64,nenergy,npitch,nr,nz)
 
     npoints = nenergy*npitch*nr*nz
 
@@ -104,17 +104,17 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
             c = GCParticle(energy[ie],pitch[ip],r[ir],z[iz],amu*OrbitTomography.mass_u,q)
 
             if !in_vessel(wall,r[ir],z[iz])
-                o = GCEPRCoordinate(c,:incomplete) 
+                o = GCEPRCoordinate(c,'i') 
             else
                 try
-                    o = getGCEPRCoord(M,wall,c; kwargs...)
+                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
                 catch
-                    o = GCEPRCoordinate(c,:incomplete) 
+                    o = GCEPRCoordinate(c,'i') 
                 end
             end
 
-            if o.class in (:incomplete,:invalid,:lost)
-                o = GCEPRCoordinate(c,:incomplete) 
+            if o.class in ('i','v','l')
+                o = GCEPRCoordinate(c,'i') 
             end
 
             o
@@ -126,17 +126,17 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
             c = GCParticle(energy[ie],pitch[ip],r[ir],z[iz],amu*OrbitTomography.mass_u,q)
 
             if !in_vessel(wall,r[ir],z[iz])
-                o = GCEPRCoordinate(c,:incomplete) 
+                o = GCEPRCoordinate(c,'i') 
             else
                 try
-                    o = getGCEPRCoord(M,wall,c; kwargs...)
+                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
                 catch
-                    o = GCEPRCoordinate(c,:incomplete) 
+                    o = GCEPRCoordinate(c,'i') 
                 end
             end
 
-            if o.class in (:incomplete,:invalid,:lost)
-                o = GCEPRCoordinate(c,:incomplete) 
+            if o.class in ('i','v','l')
+                o = GCEPRCoordinate(c,'i') 
             end
 
             push!(psorbs,o)
@@ -145,36 +145,37 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
 
     for i=1:npoints
         class[subs[i]] = psorbs[i].class
-        if class[subs[i]]!= :incomplete 
+        if class[subs[i]] != 'i' 
             tau_p[subs[i]] = psorbs[i].tau_p
             tau_t[subs[i]] = psorbs[i].tau_t
         end 
     end
 
-    grid_index = filter(i -> psorbs[i].class != :incomplete, 1:npoints)
-    psorbs = filter(x -> x.class != :incomplete, psorbs)
+    grid_index = filter(i -> psorbs[i].class != 'i', 1:npoints)
+    psorbs = filter(x -> x.class != 'i', psorbs)
     npoints = length(psorbs)
     point_index[grid_index] = 1:npoints
 
     psgrid = PSGrid(energy,pitch,r,z,fill(1,npoints),point_index,class,tau_p,tau_t)
 
     if print_results
-        write_PSGrid(psgrid,filename = string(filename_prefactor, "PSGrid.h5"))
-        write_GCEPRCoords(psorbs,filename = string(filename_prefactor, "GCEPRCoords.h5")) 
+        write_PSGrid(psgrid,filename = string(filename_prefactor, "PSGrid.jld2"))
+        write_GCEPRCoords(psorbs,filename = string(filename_prefactor, "GCEPRCoords.jld2"), gcvalid_check) 
     end
     if verbose
         print("PSGrid, PSOrbs Calculated\n")
     end
 
-    return psorbs, psgrid
+    return psorbs, psgrid, gcvalid_check
 end
 
 """
     ps_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid)
 
 Converts a 1D vector where each value corresponds to a valid orbit (using PS_Grid.point_index) into a 4D matrix of values.
+Using distributed = true uses shared arrays, which break down on some clusters: https://stackoverflow.com/questions/64802561/julia-sharedarray-with-remote-workers-becomes-a-0-element-array
 """
-function ps_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid; vers::Int=1, distributed::Bool=false)
+function ps_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid; distributed::Bool=false)
     nenergy = length(PS_Grid.energy)
     npitch = length(PS_Grid.pitch)
     nr = length(PS_Grid.r)
@@ -188,34 +189,15 @@ function ps_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid; ve
         @inbounds for i = 1:npoints
             (PS_Grid.point_index[subs[i]] == 0) ? (F_ps_Matrix[subs[i]] = 0.0) : (F_ps_Matrix[subs[i]]=F_ps_VEC[PS_Grid.point_index[subs[i]]])
         end
-    else 
-        if vers==1
-            F_ps_Matrix = SharedArray{Float64}(undef,nenergy,npitch,nr,nz)
-
-            PS_Grid_point_index = convert(SharedArray,PS_Grid.point_index)
-            F_ps_VEC = convert(SharedArray,F_ps_VEC)
-
-            @distributed for i = 1:npoints
-                (PS_Grid_point_index[subs[i]] == 0) ? (F_ps_Matrix[subs[i]] = 0.0) : (F_ps_Matrix[subs[i]]=F_ps_VEC[PS_Grid.point_index[subs[i]]])
-            end
-        elseif vers==2
-            F_ps_Matrix = SharedArray{Float64}(undef,nenergy,npitch,nr,nz)
-
-            @eval @everywhere begin 
-                PS_Grid_point_index = $PS_Grid_point_index
-                F_ps_VEC = $F_ps_VEC
-            end
-
-            @distributed for i = 1:npoints
-                (PS_Grid.point_index[subs[i]] == 0) ? (F_ps_Matrix[subs[i]] = 0.0) : (F_ps_Matrix[subs[i]]=F_ps_VEC[PS_Grid.point_index[subs[i]]])
-            end
-        elseif vers==3
-            F_ps_Matrix = SharedArray{Float64}(undef,nenergy,npitch,nr,nz)
-
-            @distributed for i = 1:npoints
-                (PS_Grid.point_index[subs[i]] == 0) ? (F_ps_Matrix[subs[i]] = 0.0) : (F_ps_Matrix[subs[i]]=F_ps_VEC[PS_Grid.point_index[subs[i]]])
-            end
+    else
+        F_ps_Matrix0 = SharedArray{Float64}(nenergy,npitch,nr,nz)
+        PS_Grid_point_index = PS_Grid.point_index
+        @sync @distributed for i = 1:npoints
+            (PS_Grid_point_index[subs[i]] == 0) ? (F_ps_Matrix0[subs[i]] = 0.0) : (F_ps_Matrix0[subs[i]]=F_ps_VEC[PS_Grid_point_index[subs[i]]])
         end
+
+        F_ps_Matrix = convert(Array,F_ps_Matrix0)
+        @everywhere F_ps_Matrix0 = nothing
     end
 
     return F_ps_Matrix
@@ -225,8 +207,9 @@ end
     ps_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
 
 Converts a 4D matrix of values in particle-space, and converts it into a 1D vector where each value corresponds to a valid orbit (using PS_Grid.point_index).
+Using distributed = true uses shared arrays, which break down on some clusters: https://stackoverflow.com/questions/64802561/julia-sharedarray-with-remote-workers-becomes-a-0-element-array
 """
-function ps_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
+function ps_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid; sharedArray::Bool=true)
     nenergy = length(PS_Grid.energy)
     npitch = length(PS_Grid.pitch)
     nr = length(PS_Grid.r)
@@ -234,33 +217,40 @@ function ps_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid)
 
     subs = CartesianIndices((nenergy,npitch,nr,nz))
 
-    F_ps_VEC = Float64[]
-
     npoints = nenergy*npitch*nr*nz
 
-    @inbounds for i = 1:npoints
-        (PS_Grid.point_index[subs[i]] != 0) && push!(F_ps_VEC,F_ps_Matrix[subs[i]])
-    end
+    if !sharedArray
+        F_ps_VEC = Float64[]
+        @inbounds for i = 1:npoints
+            (PS_Grid.point_index[subs[i]] != 0) && push!(F_ps_VEC,F_ps_Matrix[subs[i]])
+        end
+    else
+        PS_Grid_point_index = PS_Grid.point_index
+        F_ps_VEC0 = SharedVector{Float64}(length(PS_Grid.counts))
+        @sync @distributed for i = 1:npoints
+            (PS_Grid_point_index[subs[i]] != 0) && (F_ps_VEC0[PS_Grid_point_index[subs[i]]] = F_ps_Matrix[subs[i]])
+        end
 
+        F_ps_VEC = convert(Array,F_ps_VEC0)
+        @everywhere F_ps_VEC0 = nothing
+    end
     return F_ps_VEC
 end
 
-function write_PSGrid(grid::PSGrid;filename="PSGrid.h5")
-    h5open(filename,"w") do file
-        file["energy"] = collect(grid.energy)
-        file["pitch"] = collect(grid.pitch)
-        file["r"] = collect(grid.r)
-        file["z"] = collect(grid.z)
-        file["counts"] = grid.counts
-        file["point_index"] = grid.point_index
-        file["class"] = String.(grid.class)
-        file["tau_p"] = grid.tau_p
-        file["tau_t"] = grid.tau_t
-    end
+function write_PSGrid(psgrid::PSGrid;filename="PSGrid.jld2")
+    @save filename psgrid
     nothing
 end
 
-function read_PSGrid(filename)
+function read_PSGrid(filename::String; old::Bool=false)
+    (old||(last(filename,2)=="h5")) && (return read_PSGridOld(filename))
+
+    isfile(filename) || error("File does not exist")
+    @load filename psgrid
+    return psgrid
+end
+
+function read_PSGridOld(filename::String) 
     isfile(filename) || error("File does not exist")
 
     f = h5open(filename)
@@ -275,102 +265,64 @@ function read_PSGrid(filename)
     tau_t = read(f["tau_t"])
     close(f)
 
-    return PSGrid(energy,pitch,r,z,counts,point_index,class,tau_p,tau_t)
+    class = class_char.(class)
+    psgrid = PSGrid(energy,pitch,r,z,counts,point_index,class,tau_p,tau_t)
+
+    filename_new = string(chop(filename,tail=2),"jld2")
+    write_PSGrid(psgrid,filename=filename_new)
+
+    return psgrid
 end
 
 """
-    write_GCEPRCoords(psorbs;vacuum=false, drift=true, filename = "GCEPRCoords.h5")
+    write_GCEPRCoords(psorbs,...)
 
 Prints a vector of GCEPRCoords. *MUST manually specify vacuum, drift.
 """
-function write_GCEPRCoords(psorbs;vacuum=false, drift=true, filename = "GCEPRCoords.h5")
-    numcoords = length(psorbs)
-
-    classes = Vector{String}()
-    gcvalids = Vector{Bool}()
-
-    E = zeros(Float64,numcoords)
-    p = zeros(Float64,numcoords)
-    R = zeros(Float64,numcoords)
-    Z = zeros(Float64,numcoords)
-    pm = zeros(Float64,numcoords)
-    Rm = zeros(Float64,numcoords)
-    Zm = zeros(Float64,numcoords)
-    tm = zeros(Float64,numcoords)
-    jacdets = zeros(Float64,numcoords)
-
-    t_p = zeros(Float64,numcoords)
-    t_t = zeros(Float64,numcoords)
-
-    if typeof(psorbs[1].gcvalid)==Nothing #Assumes gcvalid_check = false when PSGrid written, such that all GCEPRCoords have gcvalid=nothing
-        for (io,o) in enumerate(psorbs) 
-            E[io] = o.energy
-            p[io] = o.pitch
-            R[io] = o.r
-            Z[io] = o.z
-            pm[io] = o.pitch_m
-            Rm[io] = o.r_m
-            Zm[io] = o.z_m
-            tm[io] = o.t
-            jacdets[io] = o.jacdet
-
-            t_p[io] = o.tau_p
-            t_t[io] = o.tau_t
-
-            push!(classes,string(o.class))
-        end
-    else 
-        for (io,o) in enumerate(psorbs) 
-            E[io] = o.energy
-            p[io] = o.pitch
-            R[io] = o.r
-            Z[io] = o.z
-            pm[io] = o.pitch_m
-            Rm[io] = o.r_m
-            Zm[io] = o.z_m
-            tm[io] = o.t
-            jacdets[io] = o.jacdet
-    
-            t_p[io] = o.tau_p
-            t_t[io] = o.tau_t
-    
-            push!(classes,string(o.class))
-            push!(gcvalids,o.gcvalid)
-        end    
-    end
-    
-    h5open(filename,"w") do file
-        file["E"] = E
-        file["p"] = p
-        file["R"] = R
-        file["Z"] = Z
-        file["pm"] = pm
-        file["Rm"] = Rm
-        file["Zm"] = Zm
-        file["tm_normalised"] = tm
-        file["jacdets"] = jacdets
-
-        file["tau_p"] = t_p
-        file["tau_t"] = t_t
-
-        file["class"] = classes
-        file["gcvalids"] = gcvalids
-
-        file["m"] = psorbs[1].m
-        file["q"] = psorbs[1].q
-
-        file["vacuum"] = vacuum
-        file["drift"] = drift    
-    end
+function write_GCEPRCoords(psorbs::Vector{GCEPRCoordinate},gcvalid_check::Bool; vacuum=false, drift=true, filename = "GCEPRCoords.jld2") 
+    @save filename psorbs gcvalid_check vacuum drift
     nothing
 end
+
+function write_GCEPRCoordsMatrix(psorbs::Vector{GCEPRCoordinate},gcvalid_check::Bool; vacuum::Bool=false, drift::Bool=true, filename = "GCEPRCoordsMatrix.jld2", distributed::Bool=false, sharedArray::Bool=false, verbose::Bool = true)
+    GCEPR_vals,GCEPR_times,classes,gcvalids = matrix_GCEPRCoords(psorbs, gcvalid_check; distributed=distributed, sharedArray=sharedArray, verbose=verbose)
+    m = psorbs[1].m
+    q = psorbs[1].q
+    @save filename GCEPR_vals GCEPR_times classes gcvalids m q vacuum drift
+
+    nothing
+end
+
+
+"""
+    read_GCEPRCoordsMatrix(filename;verbose=true)
+
+Reads GCEPRCoords that were printed to file by write_GCEPRCoords. Note the output of this function is coords,vacuum,drift.
+"""
+function read_GCEPRCoordsMatrix(filename;verbose::Bool=true)
+    isfile(filename) || error("File does not exist")
+
+    @load filename GCEPR_vals GCEPR_times classes gcvalids m q vacuum drift
+    gcvalid_check = !isempty(gcvalids) 
+
+    return GCEPR_vals,GCEPR_times,classes,gcvalid_check,gcvalids,m,q,vacuum,drift
+end 
 
 """
     read_GCEPRCoords(filename;verbose=true)
 
 Reads GCEPRCoords that were printed to file by write_GCEPRCoords. Note the output of this function is coords,vacuum,drift.
 """
-function read_GCEPRCoords(filename;verbose=true)
+function read_GCEPRCoords(filename; old::Bool=false, distributed::Bool=false)
+    (old||(last(filename,2)=="h5")) && (return read_GCEPRCoordsOld(filename,distributed=distributed))
+
+    isfile(filename) || error("File does not exist")
+    @load filename psorbs gcvalid_check vacuum drift
+
+    return psorbs,gcvalid_check,vacuum,drift
+end 
+
+function read_GCEPRCoordsOld(filename; verbose=true, distributed::Bool=false)
     isfile(filename) || error("File does not exist")
 
     f = h5open(filename)
@@ -397,24 +349,135 @@ function read_GCEPRCoords(filename;verbose=true)
         drift = read(f["drift"])
     close(f)
 
-    coords = GCEPRCoordinate[]
+    gcvalid_check = !isempty(gcvalids)
+    classes = class_char.(classes)
 
     verbose && print("Appending Orbits\n")
-
-    if length(gcvalids) == 0
-        @showprogress for i=1:length(E)
-            c = GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],nothing,m,q)
-            push!(coords,c)
+    if !distributed
+        coords = Vector{GCEPRCoordinate}(undef,length(E))
+        if !gcvalid_check
+            @showprogress for i=1:length(E)
+                coords[i] = GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],false,m,q)
+            end
+        else
+            @showprogress for i=1:length(E)
+                coords[i] = GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],gcvalids[i],m,q)
+            end
         end
     else
-        @showprogress for i=1:length(E)
-            c = GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],gcvalids[i],m,q)
-            push!(coords,c)
+        if !gcvalid_check
+            coords = @distributed (vcat) for i=1:length(E)
+                GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],false,m,q)
+            end
+        else
+            coords = @distributed (vcat) for i=1:length(E)
+                GCEPRCoordinate(E[i],p[i],R[i],Z[i],pm[i],Rm[i],Zm[i],tm[i],classes[i],t_p[i],t_t[i],jacdets[i],gcvalids[i],m,q)
+            end
         end
     end
 
-    return coords,vacuum,drift
+    filename_new = string(chop(filename,tail=2),"jld2")
+    write_GCEPRCoords(coords,gcvalid_check; vacuum=vacuum, drift=drift, filename=filename_new)
+
+    return coords,gcvalid_check,vacuum,drift
 end 
+
+function matrix_GCEPRCoords(psorbs::Vector{GCEPRCoordinate}, gcvalid_check::Bool; distributed::Bool=false, sharedArray::Bool=false, verbose::Bool = true)
+    num_psorbs = length(psorbs)
+    sharedArray && (distributed=true)
+
+    if !distributed
+        GCEPR_vals = Array{Float64}(undef,num_psorbs,8)
+        GCEPR_times = Array{Float64}(undef,num_psorbs,3)
+        classes = Vector{Char}(undef,num_psorbs)
+
+        if gcvalid_check
+            gcvalids = Vector{Bool}(undef,num_psorbs)
+        else
+            gcvalids = Vector{Bool}()
+        end
+
+        m = psorbs[1].m
+        q = psorbs[1].q
+
+        @inbounds for i in 1:num_psorbs
+            GCEPR_vals[i,:] = [psorbs[i].energy,psorbs[i].pitch,psorbs[i].r,psorbs[i].z,psorbs[i].pitch_m,psorbs[i].r_m,psorbs[i].z_m,psorbs[i].jacdet]
+            GCEPR_times[i,:] = [psorbs[i].t,psorbs[i].tau_p,psorbs[i].tau_t]
+            classes[i] = psorbs[i].class
+            gcvalid_check && (gcvalids[i]=psorbs[i].gcvalid)
+        end
+
+        return (GCEPR_vals,GCEPR_times,classes,gcvalids)
+    elseif sharedArray
+        GCEPR_vals = SharedArray{Float64}(num_psorbs,8)
+        GCEPR_times = SharedArray{Float64}(num_psorbs,3)
+        classes = SharedVector{Char}(num_psorbs)
+
+        if gcvalid_check
+            gcvalids = SharedVector{Bool}(num_psorbs)
+        else
+            gcvalids = Vector{Bool}()
+        end
+
+        m = psorbs[1].m
+        q = psorbs[1].q
+
+        @sync @distributed for i in 1:num_psorbs
+            GCEPR_vals[i,:] = [psorbs[i].energy,psorbs[i].pitch,psorbs[i].r,psorbs[i].z,psorbs[i].pitch_m,psorbs[i].r_m,psorbs[i].z_m,psorbs[i].jacdet]
+            GCEPR_times[i,:] = [psorbs[i].t,psorbs[i].tau_p,psorbs[i].tau_t]
+            classes[i] = psorbs[i].class
+            gcvalid_check && (gcvalids[i]=psorbs[i].gcvalid)
+        end
+
+        gcvalid_check ? (gcvalids0 = convert(Vector,gcvalids)) : gcvalids0 = Vector{Bool}()
+
+        returns = (convert(Array,GCEPR_vals),convert(Array,GCEPR_times),convert(Vector,classes),gcvalids0)
+
+        verbose && print("Garbage collecting shared arrays.")
+        @everywhere begin
+            GCEPR_vals = nothing
+            GCEPR_times = nothing
+            classes = nothing
+            gcvalids=nothing
+            GC.gc()
+        end
+
+        return returns
+    else
+        num_psorbs = length(psorbs)
+
+        GCEPR_vals0 = dzeros(Float64,(num_psorbs,8),workers(),[nworkers(),1]) #SharedArray{Float64}(num_psorbs,8)
+        GCEPR_times0 = dzeros(Float64,(num_psorbs,3),workers(),[nworkers(),1]) #SharedArray{Float64}(num_psorbs,3)
+        classes0 = dfill('0',num_psorbs)
+    
+        if gcvalid_check
+            gcvalids0 = dfill(false,num_psorbs)
+        else
+            gcvalids0 = Vector{Bool}()
+        end
+
+        @sync @distributed for j = 1:nworkers()
+            for (io,i) in enumerate(DistributedArrays.localindices(GCEPR_vals0)[1])
+                localpart(GCEPR_vals0)[io,:] = [psorbs[i].energy,psorbs[i].pitch,psorbs[i].r,psorbs[i].z,psorbs[i].pitch_m,psorbs[i].r_m,psorbs[i].z_m,psorbs[i].jacdet]
+                localpart(GCEPR_times0)[io,:] = [psorbs[i].t,psorbs[i].tau_p,psorbs[i].tau_t]
+                localpart(classes0)[io] = psorbs[i].class
+                gcvalid_check && (localpart(gcvalids0)[io]=psorbs[i].gcvalid)
+            end
+        end
+
+        gcvalid_check ? (gcvalids = convert(Vector,gcvalids0)) : gcvalids= Vector{Bool}()
+        returns = (convert(Array,GCEPR_vals0),convert(Array,GCEPR_times0),convert(Vector,classes0),gcvalids)
+
+        verbose && print("Closing distributed arrays.")
+        close(GCEPR_vals0)
+        close(GCEPR_times0)
+        close(classes0)
+        gcvalid_check && close(gcvalids0)
+
+        return returns
+    end
+    nothing
+end
 
 """
     fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector; batch_multipler=20, q=1, amu=OrbitTomography.H2_amu, verbose = false, filename_prefactor = "", kwargs...)
@@ -434,7 +497,7 @@ Each distributed batch of GCEPRCoords is printed straight to file by its remote 
     @everywhere cd(path)"
 Then state filename_prefactor=filename_prefactor in the function input
 """
-function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector; filename_prefactor = "", batch_multipler=20, q=1, amu=OrbitTomography.H2_amu, verbose = false, debug=false, kwargs...)
+function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector; filename_prefactor = "", gcvalid_check::Bool=false, batch_multipler=20, q=1, amu=OrbitTomography.H2_amu, verbose = false, debug=false, kwargs...)
     path=pwd()
 
     mkdir(string(filename_prefactor,"_Batches"))
@@ -457,13 +520,13 @@ function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, en
 
     print("Num batches = ",(loop_batches+1),"\n")
 
-    writebatch = x -> fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,x,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, kwargs...)
+    writebatch = x -> fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,x,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, gcvalid_check=gcvalid_check, kwargs...)
 
     if !debug
         pmap(writebatch, collect(1:(loop_batches+1)))
     else
         for i in 1:(loop_batches+1)
-            fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,i,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, kwargs...)
+            fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,i,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, gcvalid_check=gcvalid_check, kwargs...)
         end
     end
 
@@ -478,6 +541,7 @@ function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, en
         file["z"] = collect(z)
         file["batch"] = batch
         file["loop_batches"] = loop_batches
+        file["gcvalid_check"] = gcvalid_check
     end
 
     cd(path)
@@ -498,8 +562,6 @@ function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall}
 
     npoints = nenergy*npitch*nr*nz
 
-    gcvalid_check ? (gcvalid_default = true) : (gcvalid_default = nothing) #Need gcvalid to be a consistent type for write_GCEPRCoords to work properly 
-
     if batch_num <= loop_batches
         j = batch_num
 
@@ -509,23 +571,23 @@ function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall}
             c = GCParticle(energy[ie],pitch[ip],r[ir],z[iz],amu*OrbitTomography.mass_u,q)
 
             if !in_vessel(wall,r[ir],z[iz])
-                o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
+                o = GCEPRCoordinate(c,'i')  
             else
                 try
                     o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
                 catch
-                    o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
+                    o = GCEPRCoordinate(c,'i')  
                 end
             end
 
-            if o.class in (:incomplete,:invalid,:lost)
-                o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
+            if o.class in ('i','v','l')
+                o = GCEPRCoordinate(c,'i')  
             end
 
             push!(GCEPRCs,o)
         end
 
-        write_GCEPRCoords(GCEPRCs,filename = string(filename_prefactor,"_batch(",batch,")",j,"of",(loop_batches+1), "_GCEPRCoords.h5")) 
+        write_GCEPRCoords(GCEPRCs,filename = string(filename_prefactor,"_batch(",batch,")",j,"of",(loop_batches+1), "_GCEPRCoords.jld2"),gcvalid_check) 
     elseif batch_num == (loop_batches+1)
         GCEPRCs = GCEPRCoordinate[]
         for i=(1+loop_batches*batch):npoints
@@ -533,23 +595,23 @@ function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall}
             c = GCParticle(energy[ie],pitch[ip],r[ir],z[iz],amu*OrbitTomography.mass_u,q)
 
             if !in_vessel(wall,r[ir],z[iz])
-                o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
+                o = GCEPRCoordinate(c,'i')  
             else
                 try
                     o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
                 catch
-                    o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
+                    o = GCEPRCoordinate(c,'i')  
                 end
             end
 
-            if o.class in (:incomplete,:invalid,:lost)
-                o = GCEPRCoordinate(c,:incomplete; gcvalid=gcvalid_default) 
+            if o.class in ('i','v','l')
+                o = GCEPRCoordinate(c,'i')  
             end
 
             push!(GCEPRCs,o)
         end
 
-        write_GCEPRCoords(GCEPRCs,filename = string(filename_prefactor,"_batch(",batch,")",(loop_batches+1),"of",(loop_batches+1),"_GCEPRCoords.h5")) 
+        write_GCEPRCoords(GCEPRCs,filename = string(filename_prefactor,"_batch(",batch,")",(loop_batches+1),"of",(loop_batches+1),"_GCEPRCoords.jld2"),gcvalid_check) 
     else
         error("Inputted batch number is greater than total number of batches.\n")
     end
@@ -575,6 +637,7 @@ function reconstruct_PSGrid(filename_prefactor; print_results = false, verbose =
         z = read(f["z"])
         batch = read(f["batch"])
         loop_batches = read(f["loop_batches"])
+        gcvalid_check = read(f["gcvalid_check"])
     close(f)
 
     nenergy = length(energy)
@@ -583,14 +646,16 @@ function reconstruct_PSGrid(filename_prefactor; print_results = false, verbose =
     nz = length(z)
     subs = CartesianIndices((nenergy,npitch,nr,nz))
 
-    class = fill(:incomplete,(nenergy,npitch,nr,nz))
+    class = fill('i',(nenergy,npitch,nr,nz))
     point_index = zeros(Int,nenergy,npitch,nr,nz)
     tau_t = zeros(Float64,nenergy,npitch,nr,nz)
     tau_p = zeros(Float64,nenergy,npitch,nr,nz)
 
     npoints = nenergy*npitch*nr*nz
 
-    GCEPRCoords = reconstruct_GCEPRCoords(filename_prefactor, batch, loop_batches)
+    GCEPRCoords,gcvalid_check2 = reconstruct_GCEPRCoords(filename_prefactor, batch, loop_batches)
+
+    gcvalid_check2 != gcvalid_check && error("gcvalid_inconsistency")
 
     for i=1:npoints
         class[subs[i]] = GCEPRCoords[i].class
@@ -598,8 +663,8 @@ function reconstruct_PSGrid(filename_prefactor; print_results = false, verbose =
         tau_t[subs[i]] = GCEPRCoords[i].tau_t
     end
 
-    grid_index = filter(i -> GCEPRCoords[i].class != :incomplete, 1:npoints)
-    GCEPRCoords = filter(x -> x.class != :incomplete, GCEPRCoords)
+    grid_index = filter(i -> GCEPRCoords[i].class != 'i', 1:npoints)
+    GCEPRCoords = filter(x -> x.class != 'i', GCEPRCoords)
     npoints = length(GCEPRCoords)
     point_index[grid_index] = 1:npoints
 
@@ -607,8 +672,8 @@ function reconstruct_PSGrid(filename_prefactor; print_results = false, verbose =
 
     if print_results
         length(print_dir)>0 && cd(print_dir)
-        write_PSGrid(psgrid,filename = string(filename_prefactor, "PSGrid.h5"))
-        write_GCEPRCoords(GCEPRCoords,filename = string(filename_prefactor, "GCEPRCoords.h5")) 
+        write_PSGrid(psgrid,filename = string(filename_prefactor, "PSGrid.jld2"))
+        write_GCEPRCoords(GCEPRCoords,filename = string(filename_prefactor, "GCEPRCoords.jld2"),gcvalid_check) 
     end
 
     verbose && print("PSGrid and GCEPRCoords Calculated\n")
@@ -619,15 +684,16 @@ end
 """
     reconstruct_GCEPRCoords(filename_prefactor::String, batch::Int, loop_batches::Int)
 
-This function is used internally within reconstruct_PSGrid to read batches of GCEPRCoordinates, and collate them into a single vector.
+This function is used internally within reconstruct_PSGrid to read batches of GCEPRCoordinates, and collate them into a single vector. 
 """
 function reconstruct_GCEPRCoords(filename_prefactor::String, batch::Int, loop_batches::Int)
     total_GCEPRCoords = GCEPRCoordinate[]
     batch_error = Int[]
 
+    gcvalid_check = false
     @showprogress for j=1:(loop_batches+1)
         try
-            coords,vacuum,drift = read_GCEPRCoords(string(filename_prefactor,"_batch(",batch,")",j,"of",(loop_batches+1), "_GCEPRCoords.h5");verbose=false) 
+            coords,gcvalid_check,vacuum,drift = read_GCEPRCoords(string(filename_prefactor,"_batch(",batch,")",j,"of",(loop_batches+1), "_GCEPRCoords.jld2")) 
             append!(total_GCEPRCoords,coords)
         catch
             push!(batch_error,j)
@@ -639,5 +705,5 @@ function reconstruct_GCEPRCoords(filename_prefactor::String, batch::Int, loop_ba
         error("Batch Reading Error, failed batches seen above.\n")
     end 
 
-    return total_GCEPRCoords
+    return total_GCEPRCoords, gcvalid_check
 end 
