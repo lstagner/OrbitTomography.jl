@@ -501,7 +501,7 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
     end
 end
 
-function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}, PS_orbs::Vector{GCEPRCoordinate}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
+function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
     verbose && print("Sorting orbits into types.\n")
 
     ctr_passing_spline, trapped_spline, co_passing_spline = class_splines(orbs,F_os_VEC,k; stiffness_factor=stiffness_factor, kwargs...)
@@ -543,7 +543,7 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Floa
     return vec(PS_dist)
 end
 
-function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}, F_os_VEC::Vector{Float64}, k::Int; read_save_centers::Bool = false, read_dir::String = "", filename_prefactor::String = "",  write_dir::String = "", stiffness_factor::Float64=0.0, verbose::Bool=true)  
+function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, F_os_VEC::Vector{Float64}, k::Int; read_save_centers::Bool = false, read_dir::String = "", filename_prefactor::String = "",  write_dir::String = "", stiffness_factor::Float64=0.0, verbose::Bool=true)  
     if !read_save_centers
         ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs)
 
@@ -612,7 +612,7 @@ function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vect
     return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
 end
 
-function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}, psgrid::PSGrid, sigma;
+function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, psgrid::PSGrid, sigma;
                             distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
                             covariance=:local, norms=S3(1.0,1.0,1.0),
                             checkpoint=true, warmstart=false,file="eprz_progress.jld2",  rescale_factor= 0.0, kwargs...) 
@@ -634,7 +634,7 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return F_ps_VEC
 end
 
-function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}, sigma;
+function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, sigma;
                             Js=Vector{Vector{Float64}}[],
                             energy=range(1.0,80.0,length=25),
                             pitch=range(-0.99,0.99,length=25),
@@ -723,7 +723,7 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return EPRZDensity(f_eprz,energy,pitch,r,z)
 end
 
-function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) 
+function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) 
     length(size(F_ps_Weights))>1 ? (matrix_input=true) :  (matrix_input=false)
 
     if distributed 
@@ -898,7 +898,7 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::U
 end
 
 #Split into two functions!!! splinemaker and epr_spline_eval
-function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit}}; fpsorbs_2_matrix=x->psorbs_2_matrix(x), k::Int=2, distributed=false, rescale_factor=0.0, verbose=true, psorb_matrix_prefactor::String = "", read_save_centers::Bool = false)  #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
+function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; fpsorbs_2_matrix=x->psorbs_2_matrix(x), k::Int=2, distributed=false, rescale_factor=0.0, verbose=true, psorb_matrix_prefactor::String = "", read_save_centers::Bool = false)  #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
     num_psorbs = length(PS_orbs)
 
     !isempty(psorb_matrix_prefactor) && (read_save_centers = true)
