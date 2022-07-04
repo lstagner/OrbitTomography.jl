@@ -189,7 +189,7 @@ function epr2ps(F_os_VEC::Vector{Float64},og,PS_orbs::Vector{GCEPRCoordinate}; t
     return epr2ps(F_os_VEC::Vector{Float64},og.energy,og.pitch,og.r,PS_orbs,og.orbit_index,og.class; topological_force=topological_force, mislabelled=mislabelled, distributed=distributed, rescale_factor=rescale_factor)
 end
 
-function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitch::AbstractVector{Float64},or::AbstractVector{Float64},PS_orbs::Vector{GCEPRCoordinate},og_orbit_index::Array{Int,3},og_class::Array{Symbol,3}; vers::Int=1, topological_force::Bool=true, mislabelled::Bool=false, distributed::Bool=false, rescale_factor=0.0)
+function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitch::AbstractVector{Float64},or::AbstractVector{Float64},PS_orbs::Vector{GCEPRCoordinate},og_orbit_index::Array{Int,3},og_class::Array{Symbol,3}; sharedArray::Bool=false, topological_force::Bool=true, mislabelled::Bool=false, distributed::Bool=false, rescale_factor=0.0)
     og_class = class_char.(og_class)
 
     num_orbs = length(PS_orbs)
@@ -201,7 +201,7 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
     dr = or[2]-or[1]
 
     if distributed
-        if vers == 1
+        if !sharedArray
             F_ps_VEC = @showprogress @distributed (vcat) for PS_orbs_i in PS_orbs
                 i = argmin(abs.(PS_orbs_i.energy .- oenergy))
                 j = argmin(abs.(PS_orbs_i.pitch_m .- opitch))
@@ -232,7 +232,7 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
 
                 F_ps_i
             end
-        elseif vers == 2
+        else 
             F_ps_VEC0 = SharedVector{Float64}(length(PS_orbs))
 
             @sync @distributed for i in 1:length(PS_orbs)
@@ -984,7 +984,17 @@ function psorbs_2_matrix_INV(PS_orbs::Vector{GCEPRCoordinate})
     return points
 end
 
-function psorbs_2_matrix_Darray(PS_orbs::Vector{GCEPRCoordinate})
+function psorbs_2_matrix_StaticArray(PS_orbs::Vector{GCEPRCoordinate})
+    points = SVector{4, Float64}[]
+
+    for i in PS_orbs
+        push!(points,SVector{4}(i.energy,i.pitch,i.r,i.z))
+    end
+
+    return copy(reshape(reinterpret(Float64, points), (4,length(PS_orbs))))
+end
+
+function psorbs_2_matrix_Darray(PS_orbs::Vector{GCEPRCoordinate}) #works slow on cluster
     num_psorbs = length(PS_orbs)
 
     points = dzeros(Float64,(num_psorbs,4),workers(),[nworkers(),1])
@@ -1006,7 +1016,7 @@ function psorbs_2_matrix_DarrayInner(PS_orbs::Vector{GCEPRCoordinate},points::DA
     end
 end
 
-function psorbs_2_matrix_DistributedForLoop(PS_orbs::Vector{GCEPRCoordinate})
+function psorbs_2_matrix_DistributedForLoop(PS_orbs::Vector{GCEPRCoordinate}) #randomly crashed on cluster (killed)
     points = @distributed (vcat) for i = 1:length(PS_orbs)
         [PS_orbs[i].energy,PS_orbs[i].pitch,PS_orbs[i].r,PS_orbs[i].z]'
     end
@@ -1014,11 +1024,11 @@ function psorbs_2_matrix_DistributedForLoop(PS_orbs::Vector{GCEPRCoordinate})
 end
 
 """
-using DistributedArrays
+@everywhere using DistributedArrays
 points = dzeros(Float64,(length(PS_orbs),4),workers(),[nworkers(),1])
-SPMD.spmd(psorbs_2_matrix_DarraySPMD2,PS_orbs,points)
+SPMD.spmd(OrbitTomography.psorbs_2_matrix_DarraySPMD2,PS_orbs,points)
 """
-function psorbs_2_matrix_DarraySPMD2(PS_orbs::Vector{GCEPRCoordinate}, points::DArray{Float64,2})
+function psorbs_2_matrix_DarraySPMD2(PS_orbs::Vector{GCEPRCoordinate}, points::DArray{Float64,2}) #Fastest distributed method on cluster -> randomly crashed on cluster (killed)
     local_part = points[:L]
     for (io,o) in enumerate(DistributedArrays.localindices(points)[1])
         local_part[io,:] = [PS_orbs[o].energy,PS_orbs[o].pitch,PS_orbs[o].r,PS_orbs[o].z]
