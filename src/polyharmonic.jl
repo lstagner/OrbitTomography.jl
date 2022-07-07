@@ -32,7 +32,6 @@ end
 function PolyharmonicSpline(K::Int64, centers::Array{Float64,2}, values::Array{Float64}; s = 0.0)
     m,n = size(centers)
     if n == length(values)
-        @warn "Use PolyharmonicSplineInv instead of PolyharmonicSpline."
         return PolyharmonicSplineInv(K, centers, values; s = s)
     elseif m != length(values)
         throw(DimensionMismatch())
@@ -74,7 +73,6 @@ function PolyharmonicSplineInv(K::Int64, centers::Array{Float64,2}, values::Arra
     n,m = size(centers)
 
     if n == length(values)
-        @warn "Use PolyharmonicSpline instead of PolyharmonicSplineInv."
         return PolyharmonicSpline(K, centers, values; s = s)
     elseif m != length(values)
         throw(DimensionMismatch())

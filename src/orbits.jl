@@ -79,7 +79,53 @@ function orbit_grid(M::AbstractEquilibrium, eo::AbstractVector, po::AbstractVect
     orbit_index[grid_index] = 1:norbs
 
     return orbs, OrbitGrid(eo,po,ro,fill(1,norbs),orbit_index,class,tau_p,tau_t)
+end
 
+"""
+    energy_slice(og::OrbitGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; ind::Int=0, energy::Float64=0.0)
+
+Makes a smaller OrbitGrid at a single energy from an existing OrbitGrid. 
+"""
+function energy_slice(og::OrbitGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; ind::Int=0, energy::Float64=0.0, verbose::Bool=true)
+    (ind==0 && energy==0.0) && error("Please specify an energy ind or value.")
+    if ind!=0
+        newenergy = Float64[]
+        push!(newenergy,og.energy[ind])
+    else 
+        ind = argmin(abs.(og.energy .- energy))
+        newenergy = Float64[]
+        push!(newenergy,og.energy[ind])
+        verbose && print(string("Energy delta = ",(og.energy[ind]-energy),"\n"))
+    end
+
+    nenergy = length(newenergy)
+    npitch = length(og.pitch)
+    nr = length(og.r)
+
+    norbs = nenergy*npitch*nr
+
+    class = fill(:incomplete,(nenergy,npitch,nr))
+    orbit_index = zeros(Int,nenergy,npitch,nr)
+    tau_t = zeros(Float64,nenergy,npitch,nr)
+    tau_p = zeros(Float64,nenergy,npitch,nr)
+
+    new_orbs = Orbit{Float64, EPRCoordinate{Float64}}[]
+    eInt_orbit_index = og.orbit_index[ind,:,:] #2D matrix
+
+    for (io,o) in enumerate(eInt_orbit_index)
+        if o!=0 
+            push!(new_orbs,og_orbs[o])
+            class[io]=og_orbs[o].class
+            tau_p[io] = og_orbs[o].tau_p
+            tau_t[io] = og_orbs[o].tau_t
+        end
+    end
+
+    grid_index = filter(i -> eInt_orbit_index[i] != 0, 1:norbs)
+    norbs = length(new_orbs)
+    orbit_index[grid_index] = 1:norbs
+
+    return new_orbs, OrbitGrid(newenergy,og.pitch,og.r,fill(1,norbs),orbit_index,class,tau_p,tau_t)
 end
 
 function segment_orbit_grid(M::AbstractEquilibrium, orbit_grid::OrbitGrid, orbits::Vector;

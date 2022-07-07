@@ -502,8 +502,6 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
 end
 
 function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
-    verbose && print("Sorting orbits into types.\n")
-
     ctr_passing_spline, trapped_spline, co_passing_spline = class_splines(orbs,F_os_VEC,k; stiffness_factor=stiffness_factor, kwargs...)
 
     verbose && print("Evaluating particle-space distribution values.\n")
@@ -543,35 +541,87 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Floa
     return vec(PS_dist)
 end
 
-function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, F_os_VEC::Vector{Float64}, k::Int; read_save_centers::Bool = false, read_dir::String = "", filename_prefactor::String = "",  write_dir::String = "", stiffness_factor::Float64=0.0, verbose::Bool=true)  
-    if !read_save_centers
-        ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs)
+function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, F_os_VEC::Vector{Float64}, k::Int; filename_prefactor::String = "", read_save_splines::Bool = false, read_save_centers::Bool = false, spline_read_write_dir::String = "", center_read_write_dir::String = "", stiffness_factor::Float64=0.0, verbose::Bool=true)  
+    spline_filename = string(filename_prefactor,"orb_polysplines.jld2")
 
-        ctr_passing_spline = PolyharmonicSplineInv(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
-        trapped_spline = PolyharmonicSplineInv(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
-        co_passing_spline = PolyharmonicSplineInv(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
-
-    else 
-        !isempty(read_dir) && cd(read_dir)
-        filename = string(filename_prefactor,"sorted_orbs.jld2") #read_orbs
-
-        if isfile(filename)
-            verbose && print("Reading sorted orbs from file.\n")
-            @load filename ctr_passing_points trapped_points co_passing_points ctr_passing_inds trapped_inds co_passing_inds
-        else
-            !isempty(write_dir) && cd(write_dir)
-            verbose && print("Printing sorted orbs to file.\n")
-
+    !isempty(spline_read_write_dir) && cd(spline_read_write_dir)
+    if read_save_splines && isfile(spline_filename)
+        verbose && print("Reading splines from file.\n")
+        @load spline_filename ctr_passing_spline trapped_spline co_passing_spline
+    else
+        if !read_save_centers
+            verbose && print("Sorting orbits into types.\n")
             ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs)
-            @save filename ctr_passing_points trapped_points co_passing_points ctr_passing_inds trapped_inds co_passing_inds
-        end
 
-        ctr_passing_spline = PolyharmonicSplineInv(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
-        trapped_spline = PolyharmonicSplineInv(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
-        co_passing_spline = PolyharmonicSplineInv(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
+            verbose && print("Calculating splines (RAM intensive).\n")
+            ctr_passing_spline = PolyharmonicSplineInv(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
+            trapped_spline = PolyharmonicSplineInv(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
+            co_passing_spline = PolyharmonicSplineInv(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
+
+        else 
+            !isempty(center_read_write_dir) && cd(center_read_write_dir)
+            center_filename = string(filename_prefactor,"sorted_orbs.jld2") #read_orbs
+
+            if isfile(center_filename)
+                verbose && print("Reading sorted orbs from file.\n")
+                @load center_filename ctr_passing_points trapped_points co_passing_points ctr_passing_inds trapped_inds co_passing_inds
+            else
+                verbose && print("Sorting orbits into types & printing to file.\n")
+
+                ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs)
+                @save center_filename ctr_passing_points trapped_points co_passing_points ctr_passing_inds trapped_inds co_passing_inds
+            end
+
+            verbose && print("Calculating splines (RAM intensive).\n")
+            ctr_passing_spline = PolyharmonicSplineInv(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
+            trapped_spline = PolyharmonicSplineInv(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
+            co_passing_spline = PolyharmonicSplineInv(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
+        end
+    
+        if read_save_splines
+            !isempty(spline_read_write_dir) && cd(spline_read_write_dir)
+            verbose && print("Printing splines to file.\n")
+            @save spline_filename ctr_passing_spline trapped_spline co_passing_spline
+        end
     end
 
     return ctr_passing_spline, trapped_spline, co_passing_spline
+end
+
+function ps_polyharmonic_spline(PS_orbs::Vector{GCEPRCoordinate}, F_ps_Weights::Vector{Float64};  fpsorbs_2_matrix=x->psorbs_2_matrix(x), k::Int=2, verbose::Bool=true, read_save_prefactor::String = "", read_save_centers::Bool = false, read_save_spline::Bool = false, stiffness_factor::Float64=0.0)
+
+    spline_filename = string(read_save_prefactor,"ps_polyspline.jld2")
+
+    if read_save_spline && isfile(spline_filename)
+        verbose && print("Reading particle-space spline from file.\n")
+        @load spline_filename spline
+    else
+        psorb_matrix_filename = string(read_save_prefactor,"psorb_centers.jld2")
+
+        if read_save_centers && isfile(psorb_matrix_filename)
+            verbose && print("Reading spline centers from file.\n")
+            @load psorb_matrix_filename points
+        else
+            verbose && print("Calculating spline centers.\n")
+
+            points = fpsorbs_2_matrix(PS_orbs)
+
+            if read_save_centers
+                verbose && print("Printing spline centers to file.\n")
+                @save psorb_matrix_filename points
+            end
+        end
+
+        verbose && print("Generating particle-space spline (RAM intensive).\n")
+        spline = PolyharmonicSpline(k,points,F_ps_Weights;s=stiffness_factor)
+
+        if read_save_spline
+            verbose && print("Printing spline to file.\n")
+            @save spline_filename spline
+        end
+    end
+
+    return spline
 end
 
 function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}})  
@@ -897,30 +947,10 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::U
     return vec(F_os_VEC)
 end
 
-#Split into two functions!!! splinemaker and epr_spline_eval
-function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; fpsorbs_2_matrix=x->psorbs_2_matrix(x), k::Int=2, distributed=false, rescale_factor=0.0, verbose=true, psorb_matrix_prefactor::String = "", read_save_centers::Bool = false)  #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
+function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; distributed=false, rescale_factor=0.0, verbose=true, kwargs...)  #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
     num_psorbs = length(PS_orbs)
 
-    !isempty(psorb_matrix_prefactor) && (read_save_centers = true)
-    psorb_matrix_filename = string(psorb_matrix_prefactor,"psorb_centers.jld2")
-
-    if read_save_centers && isfile(psorb_matrix_filename)
-        verbose && print("Reading spline centers from file.\n")
-        @load psorb_matrix_filename points
-    else
-        verbose && print("Calculating spline centers.\n")
-
-        points = fpsorbs_2_matrix(PS_orbs)
-
-        if read_save_centers
-            verbose && print("Printing spline centers to file.\n")
-            @save psorb_matrix_filename points
-        end
-    end
-
-    verbose && print("Generating particle-space spline.\n")
-
-    spline = PolyharmonicSpline(k,points,F_ps_Weights)
+    spline = ps_polyharmonic_spline(PS_orbs, F_ps_Weights; verbose=verbose, kwargs...)
 
     verbose && print("Calculating orbit-space distribution.\n")
 

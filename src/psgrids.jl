@@ -170,6 +170,46 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
 end
 
 """
+    energy_slice(psgrid::PSGrid, PS_orbs::Vector{GCEPRCoordinate}, gcvalid_check::Bool, ind::Int)
+
+Makes a smaller PSGrid with a single energy, from an existing PSGrid.
+"""
+function energy_slice(psgrid::PSGrid, PS_orbs::Vector{GCEPRCoordinate}, gcvalid_check::Bool, ind::Int) where {T}
+    newenergy = Float64[]
+    push!(newenergy,psgrid.energy[ind])
+
+    nenergy = length(newenergy)
+    npitch = length(psgrid.pitch)
+    nr = length(psgrid.r)
+    nz = length(psgrid.z)
+
+    npoints = nenergy*npitch*nr*nz
+
+    class = fill('i',(nenergy,npitch,nr,nz))
+    point_index = zeros(Int,nenergy,npitch,nr,nz)
+    tau_t = zeros(Float64,nenergy,npitch,nr,nz)
+    tau_p = zeros(Float64,nenergy,npitch,nr,nz)
+
+    newPS_orbs = GCEPRCoordinate[]
+    eInt_point_index = psgrid.point_index[ind,:,:,:] #3D matrix
+
+    for (io,o) in enumerate(eInt_point_index)
+        if o!=0 
+            push!(newPS_orbs,PS_orbs[o])
+            class[io]=PS_orbs[o].class
+            tau_p[io] = PS_orbs[o].tau_p
+            tau_t[io] = PS_orbs[o].tau_t
+        end
+    end
+
+    grid_index = filter(i -> eInt_point_index[i] != 0, 1:npoints)
+    npoints = length(newPS_orbs)
+    point_index[grid_index] = 1:npoints
+
+    return newPS_orbs, PSGrid(newenergy,psgrid.pitch,psgrid.r,psgrid.z,fill(1,npoints),point_index,class,tau_p,tau_t), gcvalid_check
+end
+
+"""
     ps_VectorToMatrix(F_ps_VEC::AbstractVector{Float64},PS_Grid::PSGrid)
 
 Converts a 1D vector where each value corresponds to a valid orbit (using PS_Grid.point_index) into a 4D matrix of values.
@@ -284,6 +324,11 @@ function write_GCEPRCoords(psorbs::Vector{GCEPRCoordinate},gcvalid_check::Bool; 
     nothing
 end
 
+"""
+    write_GCEPRCoordsMatrix(psorbs,...)
+
+Prints GCEPRCoords as matrices as outputted by matrix_GCEPRCoords. *MUST manually specify vacuum, drift.
+"""
 function write_GCEPRCoordsMatrix(psorbs::Vector{GCEPRCoordinate},gcvalid_check::Bool; vacuum::Bool=false, drift::Bool=true, filename = "GCEPRCoordsMatrix.jld2", distributed::Bool=false, sharedArray::Bool=false, verbose::Bool = true)
     GCEPR_vals,GCEPR_times,classes,gcvalids = matrix_GCEPRCoords(psorbs, gcvalid_check; distributed=distributed, sharedArray=sharedArray, verbose=verbose)
     m = psorbs[1].m
@@ -297,7 +342,7 @@ end
 """
     read_GCEPRCoordsMatrix(filename;verbose=true)
 
-Reads GCEPRCoords that were printed to file by write_GCEPRCoords. Note the output of this function is coords,vacuum,drift.
+Reads GCEPRCoords that were printed to file by write_GCEPRCoordsMatrix.
 """
 function read_GCEPRCoordsMatrix(filename;verbose::Bool=true)
     isfile(filename) || error("File does not exist")
@@ -382,6 +427,11 @@ function read_GCEPRCoordsOld(filename; verbose=true, distributed::Bool=false)
     return coords,gcvalid_check,vacuum,drift
 end 
 
+"""
+    matrix_GCEPRCoords(psorbs::Vector{GCEPRCoordinate}, gcvalid_check::Bool;...)
+
+Converts a vector of GCEPRCoords to matrices of their values. distributed=true, sharedArray=false uses DistributedArrays which works on clusters. sharedArray=true uses SharedArrays which may crash on the cluster - see https://stackoverflow.com/questions/64802561/julia-sharedarray-with-remote-workers-becomes-a-0-element-array.
+"""
 function matrix_GCEPRCoords(psorbs::Vector{GCEPRCoordinate}, gcvalid_check::Bool; distributed::Bool=false, sharedArray::Bool=false, verbose::Bool = true)
     num_psorbs = length(psorbs)
     sharedArray && (distributed=true)
