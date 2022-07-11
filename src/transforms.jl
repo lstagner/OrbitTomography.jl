@@ -185,7 +185,7 @@ function eprz_dist(M::AbstractEquilibrium, OS::OrbitSystem, f::Vector, orbs, sig
     return epr2ps_covariance_splined(M,OS.S_inv, f, orbs, sigma;Js=Js,energy=energy,pitch=pitch,r=r,z=z,distributed=distributed, atol=atol, domain_check=domain_check, covariance=covariance, norms=norms,checkpoint=checkpoint, warmstart=warmstart,file=file, kwargs...)
 end
 
-function epr2ps(F_os_VEC::Vector{Float64},og,PS_orbs::Vector{GCEPRCoordinate}; topological_force=true, mislabelled=false, distributed=false, rescale_factor=0.0)
+function epr2ps(F_os_VEC::Vector{Float64},og,PS_orbs::Vector{GCEPRCoordinate}; sharedArray::Bool=false, topological_force=true, mislabelled=false, distributed=false, rescale_factor=0.0)
     return epr2ps(F_os_VEC::Vector{Float64},og.energy,og.pitch,og.r,PS_orbs,og.orbit_index,og.class; topological_force=topological_force, mislabelled=mislabelled, distributed=distributed, rescale_factor=rescale_factor)
 end
 
@@ -193,8 +193,7 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
     og_class = class_char.(og_class)
 
     num_orbs = length(PS_orbs)
-    topological_force && (mislabelled=true)
-    (mislabelled || topological_force) && (distributed=false)
+    mislabelled && (distributed=false)
 
     dE = oenergy[2]-oenergy[1]
     dp = opitch[2]-opitch[1]
@@ -202,29 +201,146 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
 
     if distributed
         if !sharedArray
-            F_ps_VEC = @showprogress @distributed (vcat) for PS_orbs_i in PS_orbs
-                i = argmin(abs.(PS_orbs_i.energy .- oenergy))
-                j = argmin(abs.(PS_orbs_i.pitch_m .- opitch))
-                k = argmin(abs.(PS_orbs_i.r_m .- or))
+            F_ps_VEC = @showprogress @distributed (vcat) for iter in 1:num_orbs
+                i = argmin(abs.(PS_orbs[iter].energy .- oenergy))
+                j = argmin(abs.(PS_orbs[iter].pitch_m .- opitch))
+                k = argmin(abs.(PS_orbs[iter].r_m .- or))
                 ind = og_orbit_index[i,j,k]
 
-                if ind != 0
-                    F_ps_i = F_os_VEC[ind]*PS_orbs_i.jacdet
+                F_ps_i = 0.0
+                if !topological_force
+                    if ind != 0
+                        F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
+                    else 
+                        F_ps_i = 0.0
+                    end
                 else 
-                    F_ps_i = 0.0
+                    if (PS_orbs[iter].class == og_class[i,j,k])
+                        F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
+                    else
+                        dist_E = (PS_orbs[iter].energy - oenergy[i])/dE
+                        dist_p = (PS_orbs[iter].pitch_m - opitch[j])/dp
+                        dist_r = (PS_orbs[iter].r_m - or[k])/dr
+    
+                        if dist_E >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
+                            e_start_ind=i
+    
+                            if i==length(oenergy)
+                                E_ints = [e_start_ind]
+                                dist_Es = [dist_E]
+                            else
+                                e_end_ind=i+1
+                                E_ints = [e_start_ind,e_end_ind]
+                                dist_Es = [dist_E,1-dist_E]
+                            end
+                        else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_E)
+                            e_end_ind=i
+    
+                            if (i-1)==0 
+                                E_ints = [e_end_ind]
+                                dist_Es = [abs(dist_E)]
+                            else
+                                e_start_ind=i-1
+                                E_ints = [e_start_ind,e_end_ind]
+                                dist_Es = [1-abs(dist_E),abs(dist_E)]
+                            end
+                        end
+
+                        if dist_p >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
+                            p_start_ind=j
+    
+                            if j==length(opitch)
+                                p_ints = [p_start_ind]
+                                dist_ps = [dist_p]
+                            else
+                                p_end_ind=j+1
+                                p_ints = [p_start_ind,p_end_ind]
+                                dist_ps = [dist_p,1-dist_p]
+                            end
+                        else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_p)
+                            p_end_ind=j
+    
+                            if (j-1)==0 
+                                p_ints = [p_end_ind]
+                                dist_ps = [abs(dist_p)]
+                            else
+                                p_start_ind=j-1
+                                p_ints = [p_start_ind,p_end_ind]
+                                dist_ps = [1-abs(dist_p),abs(dist_p)]
+                            end
+                        end
+
+                        if dist_r >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
+                            r_start_ind=k
+    
+                            if k==length(or)
+                                r_ints = [r_start_ind]
+                                dist_rs = [dist_r]
+                            else
+                                r_end_ind=k+1
+                                r_ints = [r_start_ind,r_end_ind]
+                                dist_rs = [dist_r,1-dist_r]
+                            end
+                        else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_r)
+                            r_end_ind=k
+    
+                            if (k-1)==0 
+                                r_ints = [r_end_ind]
+                                dist_rs = [abs(dist_r)]
+                            else
+                                r_start_ind=k-1
+                                r_ints = [r_start_ind,r_end_ind]
+                                dist_rs = [1-abs(dist_r),abs(dist_r)]
+                            end
+                        end
+
+                        distances = Float64[]
+                        locations = Array{Int64,1}[]
+                        types = Char[]
+
+                        for (eo,ee) in enumerate(dist_Es)
+                            for (po,pp) in enumerate(dist_ps)
+                                for (ro,rr) in enumerate(dist_rs)
+                                    push!(distances,(ee^2+pp^2+rr^2))
+                                    (ee<0.0||pp<0.0||rr<0.0) && error("Distances incorrectly calculated.")
+                                    push!(locations,[E_ints[eo],p_ints[po],r_ints[ro]])
+                                    push!(types,og_class[E_ints[eo],p_ints[po],r_ints[ro]])
+                                end
+                            end
+                        end
+
+                        matching_type_inds = filter(x -> types[x]==PS_orbs[iter].class, 1:length(types))
+                        locations = locations[matching_type_inds]
+                        distances = distances[matching_type_inds]
+
+                        (PS_orbs[iter].class == 'i') && error("Shouldn't be any incomplete orbits.")
+
+                        if length(matching_type_inds)==0 #No points in the surrounding grid have the same type -> revert to nearest binning
+                            if ind != 0
+                                F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
+                            else 
+                                F_ps_i = 0.0
+                            end
+                        else
+                            best_match_ind = argmin(distances)
+
+                            indFIXED = og_orbit_index[locations[best_match_ind][1],locations[best_match_ind][2],locations[best_match_ind][3]]
+                            F_ps_i = F_os_VEC[indFIXED]*PS_orbs[iter].jacdet
+                        end
+                    end
                 end
 
                 #Checking Energy Bounds:
-                if (PS_orbs_i.energy > (oenergy[end]+0.5*(oenergy[end]-oenergy[end-1]))) || (PS_orbs_i.energy < (oenergy[1]-0.5*(oenergy[2]-oenergy[1]))) || (PS_orbs_i.energy < 0.0)
+                if (PS_orbs[iter].energy > (oenergy[end]+0.5*(oenergy[end]-oenergy[end-1]))) || (PS_orbs[iter].energy < (oenergy[1]-0.5*(oenergy[2]-oenergy[1]))) || (PS_orbs[iter].energy < 0.0)
                     F_ps_i = 0.0
                 end
                 #Checking Pitch Bounds:
                 if opitch[end]>opitch[1]
-                    if (PS_orbs_i.pitch_m > (opitch[end]+0.5*abs(opitch[end]-opitch[end-1]))) || (PS_orbs_i.pitch_m < (opitch[1]-0.5*abs(opitch[2]-opitch[1]))) || abs(PS_orbs_i.pitch_m) > 1.0
+                    if (PS_orbs[iter].pitch_m > (opitch[end]+0.5*abs(opitch[end]-opitch[end-1]))) || (PS_orbs[iter].pitch_m < (opitch[1]-0.5*abs(opitch[2]-opitch[1]))) || abs(PS_orbs[iter].pitch_m) > 1.0
                         F_ps_i = 0.0
                     end
                 else
-                    if (PS_orbs_i.pitch_m < (opitch[end]-0.5*abs(opitch[end]-opitch[end-1]))) || (PS_orbs_i.pitch_m > (opitch[1]+0.5*abs(opitch[2]-opitch[1]))) || abs(PS_orbs_i.pitch_m) > 1.0
+                    if (PS_orbs[iter].pitch_m < (opitch[end]-0.5*abs(opitch[end]-opitch[end-1]))) || (PS_orbs[iter].pitch_m > (opitch[1]+0.5*abs(opitch[2]-opitch[1]))) || abs(PS_orbs[iter].pitch_m) > 1.0
                         F_ps_i = 0.0
                     end
                 end
@@ -233,18 +349,135 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
                 F_ps_i
             end
         else 
-            F_ps_VEC0 = SharedVector{Float64}(length(PS_orbs))
+            F_ps_VEC0 = SharedVector{Float64}(num_orbs)
 
-            @sync @distributed for i in 1:length(PS_orbs)
+            @sync @distributed for i in 1:num_orbs
                 i = argmin(abs.(PS_orbs[i].energy .- oenergy))
                 j = argmin(abs.(PS_orbs[i].pitch_m .- opitch))
                 k = argmin(abs.(PS_orbs[i].r_m .- or))
                 ind = og_orbit_index[i,j,k]
 
-                if ind != 0
-                    F_ps_i = F_os_VEC[ind]*PS_orbs[i].jacdet
+                F_ps_i = 0.0
+                if !topological_force
+                    if ind != 0
+                        F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
+                    else 
+                        F_ps_i = 0.0
+                    end
                 else 
-                    F_ps_i = 0.0
+                    if (PS_orbs[iter].class == og_class[i,j,k])
+                        F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
+                    else
+                        dist_E = (PS_orbs[iter].energy - oenergy[i])/dE
+                        dist_p = (PS_orbs[iter].pitch_m - opitch[j])/dp
+                        dist_r = (PS_orbs[iter].r_m - or[k])/dr
+
+                        if dist_E >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
+                            e_start_ind=i
+    
+                            if i==length(oenergy)
+                                E_ints = [e_start_ind]
+                                dist_Es = [dist_E]
+                            else
+                                e_end_ind=i+1
+                                E_ints = [e_start_ind,e_end_ind]
+                                dist_Es = [dist_E,1-dist_E]
+                            end
+                        else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_E)
+                            e_end_ind=i
+    
+                            if (i-1)==0 
+                                E_ints = [e_end_ind]
+                                dist_Es = [abs(dist_E)]
+                            else
+                                e_start_ind=i-1
+                                E_ints = [e_start_ind,e_end_ind]
+                                dist_Es = [1-abs(dist_E),abs(dist_E)]
+                            end
+                        end
+
+                        if dist_p >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
+                            p_start_ind=j
+    
+                            if j==length(opitch)
+                                p_ints = [p_start_ind]
+                                dist_ps = [dist_p]
+                            else
+                                p_end_ind=j+1
+                                p_ints = [p_start_ind,p_end_ind]
+                                dist_ps = [dist_p,1-dist_p]
+                            end
+                        else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_p)
+                            p_end_ind=j
+    
+                            if (j-1)==0 
+                                p_ints = [p_end_ind]
+                                dist_ps = [abs(dist_p)]
+                            else
+                                p_start_ind=j-1
+                                p_ints = [p_start_ind,p_end_ind]
+                                dist_ps = [1-abs(dist_p),abs(dist_p)]
+                            end
+                        end
+
+                        if dist_r >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
+                            r_start_ind=k
+    
+                            if k==length(or)
+                                r_ints = [r_start_ind]
+                                dist_rs = [dist_r]
+                            else
+                                r_end_ind=k+1
+                                r_ints = [r_start_ind,r_end_ind]
+                                dist_rs = [dist_r,1-dist_r]
+                            end
+                        else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_r)
+                            r_end_ind=k
+    
+                            if (k-1)==0 
+                                r_ints = [r_end_ind]
+                                dist_rs = [abs(dist_r)]
+                            else
+                                r_start_ind=k-1
+                                r_ints = [r_start_ind,r_end_ind]
+                                dist_rs = [1-abs(dist_r),abs(dist_r)]
+                            end
+                        end
+
+                        distances = Float64[]
+                        locations = Array{Int64,1}[]
+                        types = Char[]
+
+                        for (eo,ee) in enumerate(dist_Es)
+                            for (po,pp) in enumerate(dist_ps)
+                                for (ro,rr) in enumerate(dist_rs)
+                                    push!(distances,(ee^2+pp^2+rr^2))
+                                    (ee<0.0||pp<0.0||rr<0.0) && error("Distances incorrectly calculated.")
+                                    push!(locations,[E_ints[eo],p_ints[po],r_ints[ro]])
+                                    push!(types,og_class[E_ints[eo],p_ints[po],r_ints[ro]])
+                                end
+                            end
+                        end
+
+                        matching_type_inds = filter(x -> types[x]==PS_orbs[iter].class, 1:length(types))
+                        locations = locations[matching_type_inds]
+                        distances = distances[matching_type_inds]
+
+                        (PS_orbs[iter].class == 'i') && error("Shouldn't be any incomplete orbits.")
+
+                        if length(matching_type_inds)==0 #No points in the surrounding grid have the same type -> revert to nearest binning
+                            if ind != 0
+                                F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
+                            else 
+                                F_ps_i = 0.0
+                            end
+                        else
+                            best_match_ind = argmin(distances)
+
+                            indFIXED = og_orbit_index[locations[best_match_ind][1],locations[best_match_ind][2],locations[best_match_ind][3]]
+                            F_ps_i = F_os_VEC[indFIXED]*PS_orbs[iter].jacdet
+                        end
+                    end
                 end
 
                 #Checking Energy Bounds:
@@ -294,150 +527,149 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
             if !topological_force
                 if ind != 0
                     F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
-                    if mislabelled && (PS_orbs[iter].class != og_class[i,j,k])
-                        push!(mislabelled_PSOrb_Ints,iter)
-                        push!(corresponding_OGOrb_locations,[i,j,k])
-                        push!(mislabelledPS_types,PS_orbs[iter].class)
-                        push!(mislabelledOS_types,og_class[i,j,k])
-                    end
                 else 
                     F_ps_i = 0.0
                 end
+
+                if mislabelled && (PS_orbs[iter].class != og_class[i,j,k])
+                    push!(mislabelled_PSOrb_Ints,iter)
+                    push!(corresponding_OGOrb_locations,[i,j,k])
+                    push!(mislabelledPS_types,PS_orbs[iter].class)
+                    push!(mislabelledOS_types,og_class[i,j,k])
+                end
             else 
-                dist_E = (PS_orbs[iter].energy - oenergy[i])/dE
-                dist_p = (PS_orbs[iter].pitch_m - opitch[j])/dp
-                dist_r = (PS_orbs[iter].r_m - or[k])/dr
-
-                if dist_E >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
-                    e_start_ind=i
-
-                    if i==length(oenergy)
-                        E_ints = [e_start_ind]
-                        dist_Es = [dist_E]
-                    else
-                        e_end_ind=i+1
-                        E_ints = [e_start_ind,e_end_ind]
-                        dist_Es = [dist_E,1-dist_E]
-                    end
-                else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_E)
-                    e_end_ind=i
-
-                    if (i-1)==0 
-                        E_ints = [e_end_ind]
-                        dist_Es = [abs(dist_E)]
-                    else
-                        e_start_ind=i-1
-                        E_ints = [e_start_ind,e_end_ind]
-                        dist_Es = [1-abs(dist_E),abs(dist_E)]
-                    end
-                end
-
-                if dist_p >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
-                    p_start_ind=j
-
-                    if j==length(opitch)
-                        p_ints = [p_start_ind]
-                        dist_ps = [dist_p]
-                    else
-                        p_end_ind=j+1
-                        p_ints = [p_start_ind,p_end_ind]
-                        dist_ps = [dist_p,1-dist_p]
-                    end
-                else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_p)
-                    p_end_ind=j
-
-                    if (j-1)==0 
-                        p_ints = [p_end_ind]
-                        dist_ps = [abs(dist_p)]
-                    else
-                        p_start_ind=j-1
-                        p_ints = [p_start_ind,p_end_ind]
-                        dist_ps = [1-abs(dist_p),abs(dist_p)]
-                    end
-                end
-
-                if dist_r >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
-                    r_start_ind=k
-
-                    if k==length(or)
-                        r_ints = [r_start_ind]
-                        dist_rs = [dist_r]
-                    else
-                        r_end_ind=k+1
-                        r_ints = [r_start_ind,r_end_ind]
-                        dist_rs = [dist_r,1-dist_r]
-                    end
-                else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_r)
-                    r_end_ind=k
-
-                    if (k-1)==0 
-                        r_ints = [r_end_ind]
-                        dist_rs = [abs(dist_r)]
-                    else
-                        r_start_ind=k-1
-                        r_ints = [r_start_ind,r_end_ind]
-                        dist_rs = [1-abs(dist_r),abs(dist_r)]
-                    end
-                end
-
-                distances = Float64[]
-                locations = Array{Int64,1}[]
-                types = Char[]
-
-                for (eo,ee) in enumerate(dist_Es)
-                    for (po,pp) in enumerate(dist_ps)
-                        for (ro,rr) in enumerate(dist_rs)
-                            push!(distances,(ee^2+pp^2+rr^2))
-                            (ee<0.0||pp<0.0||rr<0.0) && error("Distances incorrectly calculated.")
-                            push!(locations,[E_ints[eo],p_ints[po],r_ints[ro]])
-                            push!(types,og_class[E_ints[eo],p_ints[po],r_ints[ro]])
-                        end
-                    end
-                end
-                
-                matching_type_inds = filter(x -> types[x]==PS_orbs[iter].class, 1:length(types))
-                locations = locations[matching_type_inds]
-                distances = distances[matching_type_inds]
-
-                (PS_orbs[iter].class == 'i') && error("Shouldn't be any incomplete orbits.")
-
-                if length(matching_type_inds)==0 #No points in the surrounding grid have the same type -> revert to nearest binning
-                    if ind != 0
-                        F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
-                    else 
-                        F_ps_i = 0.0
-                    end
-
-                    if mislabelled && (PS_orbs[iter].class != og_class[i,j,k])
-                        push!(mislabelled_PSOrb_Ints,iter)
-                        push!(corresponding_OGOrb_locations,[i,j,k])
-                        push!(mislabelledPS_types,PS_orbs[iter].class)
-                        push!(mislabelledOS_types,og_class[i,j,k])
-                    end
+                if (PS_orbs[iter].class == og_class[i,j,k]) #Nearest point is of same class, take its value straight away
+                    F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
                 else
-                    best_match_ind = argmin(distances)
+                    dist_E = (PS_orbs[iter].energy - oenergy[i])/dE
+                    dist_p = (PS_orbs[iter].pitch_m - opitch[j])/dp
+                    dist_r = (PS_orbs[iter].r_m - or[k])/dr
 
-                    indFIXED = og_orbit_index[locations[best_match_ind][1],locations[best_match_ind][2],locations[best_match_ind][3]]
-                    F_ps_i = F_os_VEC[indFIXED]*PS_orbs[iter].jacdet
+                    if dist_E >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
+                        e_start_ind=i
 
-                    if mislabelled && (PS_orbs[iter].class != og_class[i,j,k])
-                        push!(mislabelled_PSOrb_Ints,iter)
-                        push!(mislabelled_fixed_PSOrb_Ints,iter)
-                        push!(corresponding_OGOrb_locations,[i,j,k])
-                        push!(mislabelledPS_types,PS_orbs[iter].class)
-                        push!(mislabelledOS_types,og_class[i,j,k])
-                        push!(corresponding_fixed_OGOrb_locations,locations[best_match_ind])
-
-                        if ind==0
-                            push!(fixed_PSdist_differences, PS_orbs[iter].jacdet*F_os_VEC[indFIXED])
+                        if i==length(oenergy)
+                            E_ints = [e_start_ind]
+                            dist_Es = [dist_E]
                         else
-                            push!(fixed_PSdist_differences,PS_orbs[iter].jacdet*(F_os_VEC[indFIXED]-F_os_VEC[ind]))
+                            e_end_ind=i+1
+                            E_ints = [e_start_ind,e_end_ind]
+                            dist_Es = [dist_E,1-dist_E]
                         end
-                    else
-                        if indFIXED != ind 
-                            display([i,j,k])
-                            display(locations[best_match_ind])
-                            error("Topological_force error.")
+                    else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_E)
+                        e_end_ind=i
+
+                        if (i-1)==0 
+                            E_ints = [e_end_ind]
+                            dist_Es = [abs(dist_E)]
+                        else
+                            e_start_ind=i-1
+                            E_ints = [e_start_ind,e_end_ind]
+                            dist_Es = [1-abs(dist_E),abs(dist_E)]
+                        end
+                    end
+
+                    if dist_p >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
+                        p_start_ind=j
+
+                        if j==length(opitch)
+                            p_ints = [p_start_ind]
+                            dist_ps = [dist_p]
+                        else
+                            p_end_ind=j+1
+                            p_ints = [p_start_ind,p_end_ind]
+                            dist_ps = [dist_p,1-dist_p]
+                        end
+                    else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_p)
+                        p_end_ind=j
+
+                        if (j-1)==0 
+                            p_ints = [p_end_ind]
+                            dist_ps = [abs(dist_p)]
+                        else
+                            p_start_ind=j-1
+                            p_ints = [p_start_ind,p_end_ind]
+                            dist_ps = [1-abs(dist_p),abs(dist_p)]
+                        end
+                    end
+
+                    if dist_r >= 0.0 #POINT TO THE RIGHT OF GRIDPOINT, THIS IS DISTANCE TO RIGHT
+                        r_start_ind=k
+
+                        if k==length(or)
+                            r_ints = [r_start_ind]
+                            dist_rs = [dist_r]
+                        else
+                            r_end_ind=k+1
+                            r_ints = [r_start_ind,r_end_ind]
+                            dist_rs = [dist_r,1-dist_r]
+                        end
+                    else #POINT TO THE LEFT OF GRIDPOINT, DISTANCE TO RIGHT IS abs(dist_r)
+                        r_end_ind=k
+
+                        if (k-1)==0 
+                            r_ints = [r_end_ind]
+                            dist_rs = [abs(dist_r)]
+                        else
+                            r_start_ind=k-1
+                            r_ints = [r_start_ind,r_end_ind]
+                            dist_rs = [1-abs(dist_r),abs(dist_r)]
+                        end
+                    end
+
+                    distances = Float64[]
+                    locations = Array{Int64,1}[]
+                    types = Char[]
+
+                    for (eo,ee) in enumerate(dist_Es)
+                        for (po,pp) in enumerate(dist_ps)
+                            for (ro,rr) in enumerate(dist_rs)
+                                push!(distances,(ee^2+pp^2+rr^2))
+                                (ee<0.0||pp<0.0||rr<0.0) && error("Distances incorrectly calculated.")
+                                push!(locations,[E_ints[eo],p_ints[po],r_ints[ro]])
+                                push!(types,og_class[E_ints[eo],p_ints[po],r_ints[ro]])
+                            end
+                        end
+                    end
+                
+                    matching_type_inds = filter(x -> types[x]==PS_orbs[iter].class, 1:length(types))
+                    locations = locations[matching_type_inds]
+                    distances = distances[matching_type_inds]
+
+                    (PS_orbs[iter].class == 'i') && error("Shouldn't be any incomplete orbits.")
+
+                    if length(matching_type_inds)==0 #No points in the surrounding grid have the same type -> revert to nearest binning
+                        if ind != 0
+                            F_ps_i = F_os_VEC[ind]*PS_orbs[iter].jacdet
+                        else 
+                            F_ps_i = 0.0
+                        end
+
+                        if mislabelled
+                            push!(mislabelled_PSOrb_Ints,iter)
+                            push!(corresponding_OGOrb_locations,[i,j,k])
+                            push!(mislabelledPS_types,PS_orbs[iter].class)
+                            push!(mislabelledOS_types,og_class[i,j,k])
+                        end
+                    else #Nearest point isn't of same class, but at least one point in the surrounding grid is. Value of closest same-class point taken
+                        best_match_ind = argmin(distances)
+
+                        indFIXED = og_orbit_index[locations[best_match_ind][1],locations[best_match_ind][2],locations[best_match_ind][3]]
+                        F_ps_i = F_os_VEC[indFIXED]*PS_orbs[iter].jacdet
+
+                        if mislabelled 
+                            push!(mislabelled_PSOrb_Ints,iter)
+                            push!(mislabelled_fixed_PSOrb_Ints,iter)
+                            push!(corresponding_OGOrb_locations,[i,j,k])
+                            push!(mislabelledPS_types,PS_orbs[iter].class)
+                            push!(mislabelledOS_types,og_class[i,j,k])
+                            push!(corresponding_fixed_OGOrb_locations,locations[best_match_ind])
+
+                            if ind==0
+                                push!(fixed_PSdist_differences, PS_orbs[iter].jacdet*F_os_VEC[indFIXED])
+                            else
+                                push!(fixed_PSdist_differences,PS_orbs[iter].jacdet*(F_os_VEC[indFIXED]-F_os_VEC[ind]))
+                            end
                         end
                     end
                 end
