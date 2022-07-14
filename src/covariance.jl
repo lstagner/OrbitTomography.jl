@@ -668,7 +668,12 @@ function get_covariance_matrix(M::AbstractEquilibrium, orbits_1::Vector, orbits_
     
     orbs1 = [OrbitSpline(o) for o in orbits_1]
 
-    if isempty(Js_1)
+    if isempty(Js_1) && (!isempty(orbits_1[1].path.jacdets))
+        J1 = Array{Vector{Float64}}(undef, n1)
+        @inbounds for (io,o) in enumerate(orbits_1) 
+            J1[io] = o.path.jacdets
+        end
+    elseif isempty(Js_1)
         J1 = Array{Vector{Float64}}(undef, n1)
         @inbounds Threads.@threads for i=1:n1
             oi = orbits_1[i]::Orbit
@@ -686,7 +691,12 @@ function get_covariance_matrix(M::AbstractEquilibrium, orbits_1::Vector, orbits_
     
     orbs2 = [OrbitSpline(o) for o in orbits_2]
 
-    if isempty(Js_2)
+    if isempty(Js_2) && (!isempty(orbits_2[1].path.jacdets))
+        J2 = Array{Vector{Float64}}(undef, n2)
+        @inbounds for (io,o) in enumerate(orbits_2) 
+            J2[io] = o.path.jacdets
+        end
+    elseif isempty(Js_2)
         J2 = Array{Vector{Float64}}(undef, n2)
         @inbounds Threads.@threads for i=1:n2
             oi = orbits_2[i]::Orbit
