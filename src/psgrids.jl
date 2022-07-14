@@ -249,7 +249,7 @@ end
 Converts a 4D matrix of values in particle-space, and converts it into a 1D vector where each value corresponds to a valid orbit (using PS_Grid.point_index).
 Using sharedArray = true uses shared arrays, which break down on some clusters: https://stackoverflow.com/questions/64802561/julia-sharedarray-with-remote-workers-becomes-a-0-element-array
 """
-function ps_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid; sharedArray::Bool=true)
+function ps_MatrixToVector(F_ps_Matrix::Array{Float64,4},PS_Grid::PSGrid; sharedArray::Bool=false)
     nenergy = length(PS_Grid.energy)
     npitch = length(PS_Grid.pitch)
     nr = length(PS_Grid.r)

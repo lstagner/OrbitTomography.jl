@@ -956,7 +956,7 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
         touch(file)
     end
 
-    for I in inds
+    @showprogress for I in inds
         (I != inds[1] && I < last_ind) && continue
         i = I[1]
         j = I[2]
