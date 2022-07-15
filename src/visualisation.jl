@@ -14,7 +14,7 @@ function plot_PS_distribution_drop_dims(psgrid,f;auto_normalise=true,pngg=false,
             f = f .* (length(f)/sum(f))
         end
     end
-    
+
     if !its4D
         f4d = ps_VectorToMatrix(f,psgrid)
     else
@@ -30,7 +30,7 @@ function plot_PS_distribution_drop_dims(psgrid,f;auto_normalise=true,pngg=false,
 
     subs = CartesianIndices((ne,np,nr,nz))
 
-    dE = abs(psgrid.energy[2]-psgrid.energy[1]) # Assume equidistant os-psgrid
+    #dE = abs(psgrid.energy[2]-psgrid.energy[1]) # Assume equidistant os-psgrid
     dp = abs(psgrid.pitch[2] - psgrid.pitch[1]) # Assume equidistant os-psgrid
     dr = abs(psgrid.r[2]-psgrid.r[1]) # Assume equidistant os-psgrid
     dz = abs(psgrid.z[2]-psgrid.z[1]) # Assume equidistant os-psgrid
@@ -80,9 +80,14 @@ function plot_PS_distribution_drop_dims(psgrid,f;auto_normalise=true,pngg=false,
     zrange = maximum(psgrid.z)-minimum(psgrid.z)
 
     if !bluesreds
-        ep_plot = Plots.heatmap(psgrid.energy, psgrid.pitch, ep_pdf', thickness_scaling = 1.2,colorbar=colorbar, aspect_ratio = normalised_ratio*E_P_normalised_ratio,xlims = (minimum(psgrid.energy),maximum(psgrid.energy)),  ylims = (-1.0,1.0), bottom_margin = 15px,left_margin=10px,right_margin=10px, dpi =600 , xlabel="Energy (KeV)", ylabel="Pitch", c=cgrad1,fontfamily="Computer Modern",legend=legend)
-        #savefig && Plots.savefig(string(filename_prefactor,"EP_heatmap"))
-        annotate!(-0.05*erange+minimum(psgrid.energy),-0.08*prange+minimum(psgrid.pitch), text("a.", :black, :right))
+        if length(psgrid.energy)!=1
+            ep_plot = Plots.heatmap(psgrid.energy, psgrid.pitch, ep_pdf', thickness_scaling = 1.2,colorbar=colorbar, aspect_ratio = normalised_ratio*E_P_normalised_ratio,xlims = (minimum(psgrid.energy),maximum(psgrid.energy)),  ylims = (-1.0,1.0), bottom_margin = 15px,left_margin=10px,right_margin=10px, dpi =600 , xlabel="Energy (KeV)", ylabel="Pitch", c=cgrad1,fontfamily="Computer Modern",legend=legend)
+            #savefig && Plots.savefig(string(filename_prefactor,"EP_heatmap"))
+            annotate!(-0.05*erange+minimum(psgrid.energy),-0.08*prange+minimum(psgrid.pitch), text("a.", :black, :right))
+        else 
+            p_pdf1 = dropdims(sum(ep_pdf,dims=1),dims=1)
+            ep_plot = Plots.plot(psgrid.pitch,p_pdf1; xlabel="Pitch", ylabel="Paticle Density",  title = "Energy: $(round(psgrid.energy[1],digits=3)) KeV")
+        end
         rz_plot = Plots.heatmap(psgrid.r, psgrid.z, rz_pdf',thickness_scaling = 1.2,colorbar=colorbar, bottom_margin = 15px,left_margin=10px,right_margin=10px, ylims = (minimum(psgrid.z),maximum(psgrid.z)),xlims = (minimum(psgrid.r),maximum(psgrid.r)), dpi =600 , xlabel="R (m)", ylabel="Z (m)",  c=cgrad1,fontfamily="Computer Modern",legend=legend,aspect_ratio=:equal)
         annotate!(-0.05*rrange+minimum(psgrid.r),-0.08*zrange+minimum(psgrid.z), text("b.", :black, :right))
         if overplot_boundary && typeof(wall)!=Nothing
@@ -92,9 +97,14 @@ function plot_PS_distribution_drop_dims(psgrid,f;auto_normalise=true,pngg=false,
             rz_plot = Plots.scatter!([raxis],[zaxis], thickness_scaling = 1.1,ylims = (minimum(psgrid.z),maximum(psgrid.z)),xlims = (minimum(psgrid.r),maximum(psgrid.r)),  bottom_margin = 15px,left_margin=10px,right_margin=10px,  dpi =600 ,markershape = :x, markersize=3, label="magnetic axis",legend=:bottomright,color=Mmarker,aspect_ratio=:equal)
         end
     else
-        ep_plot = Plots.heatmap(psgrid.energy, psgrid.pitch, ep_pdf', thickness_scaling = 1.2, colorbar=colorbar, aspect_ratio = normalised_ratio*E_P_normalised_ratio, ylims = (-1.0,1.0), xlims = (minimum(psgrid.energy),maximum(psgrid.energy)), bottom_margin = 15px,left_margin=10px,right_margin=10px,  dpi =600 , xlabel="Energy (KeV)", ylabel="Pitch", c = :bluesreds, clims = (-maximum(abs.(ep_pdf)),maximum(abs.(ep_pdf))) ,fontfamily="Computer Modern" ,legend=legend)
-        #savefig && Plots.savefig(string(filename_prefactor,"EP_heatmap"))
-        annotate!(-0.05*erange+minimum(psgrid.energy),-0.08*prange+minimum(psgrid.pitch), text("a.", :black, :right))
+        if length(psgrid.energy)!=1
+            ep_plot = Plots.heatmap(psgrid.energy, psgrid.pitch, ep_pdf', thickness_scaling = 1.2, colorbar=colorbar, aspect_ratio = normalised_ratio*E_P_normalised_ratio, ylims = (-1.0,1.0), xlims = (minimum(psgrid.energy),maximum(psgrid.energy)), bottom_margin = 15px,left_margin=10px,right_margin=10px,  dpi =600 , xlabel="Energy (KeV)", ylabel="Pitch", c = :bluesreds, clims = (-maximum(abs.(ep_pdf)),maximum(abs.(ep_pdf))) ,fontfamily="Computer Modern" ,legend=legend)
+            #savefig && Plots.savefig(string(filename_prefactor,"EP_heatmap"))
+            annotate!(-0.05*erange+minimum(psgrid.energy),-0.08*prange+minimum(psgrid.pitch), text("a.", :black, :right))
+        else 
+            p_pdf1 = dropdims(sum(ep_pdf,dims=1),dims=1)
+            ep_plot = Plots.plot(psgrid.pitch,p_pdf1; xlabel="Pitch", ylabel="Paticle Density",  title = "Energy: $(round(psgrid.energy[1],digits=3)) KeV")
+        end
         rz_plot = Plots.heatmap(psgrid.r, psgrid.z, rz_pdf',thickness_scaling = 1.2,colorbar=colorbar, bottom_margin = 15px,left_margin=10px, ylims = (minimum(psgrid.z),maximum(psgrid.z)),xlims = (minimum(psgrid.r),maximum(psgrid.r)),right_margin=10px,  dpi =600 , xlabel="R (m)", ylabel="Z (m)", c = :bluesreds, clims = (-maximum(abs.(rz_pdf)),maximum(abs.(rz_pdf))) ,fontfamily="Computer Modern" ,legend=legend,aspect_ratio=:equal)
         annotate!(-0.05*rrange+minimum(psgrid.r),-0.08*zrange+minimum(psgrid.z), text("b.", :black, :right))
         if overplot_boundary && typeof(wall)!=Nothing
@@ -268,7 +278,7 @@ function plot_OG_distribution_drop_dims(ogrid,f;auto_normalise = true,NE213_fix=
 
     subs = CartesianIndices((ne,np,nr))
 
-    dE = abs(ogrid.energy[2]-ogrid.energy[1]) # Assume equidistant os-ogrid
+    #dE = abs(ogrid.energy[2]-ogrid.energy[1]) # Assume equidistant os-ogrid
     dp = abs(ogrid.pitch[2] - ogrid.pitch[1]) # Assume equidistant os-ogrid
     dr = abs(ogrid.r[2]-ogrid.r[1]) # Assume equidistant os-ogrid
 
@@ -415,7 +425,7 @@ function plot_OG_distribution_ALL_E(ogrid,f; thickness_scaling0=1.4, custom_lim=
 
     subs = CartesianIndices((ne,np,nr))
 
-    dE = abs(ogrid.energy[2]-ogrid.energy[1]) # Assume equidistant os-ogrid
+    #dE = abs(ogrid.energy[2]-ogrid.energy[1]) # Assume equidistant os-ogrid
     dp = abs(ogrid.pitch[2] - ogrid.pitch[1]) # Assume equidistant os-ogrid
     dr = abs(ogrid.r[2]-ogrid.r[1]) # Assume equidistant os-ogrid
 
@@ -662,7 +672,7 @@ function plot_Energy_Dist(ogrid::OrbitGrid,f;overlay = false, its3D=false,renorm
 
     subs = CartesianIndices((ne,np,nr))
 
-    dE = abs(ogrid.energy[2]-ogrid.energy[1]) # Assume equidistant os-ogrid
+    #dE = abs(ogrid.energy[2]-ogrid.energy[1]) # Assume equidistant os-ogrid
     dp = abs(ogrid.pitch[2] - ogrid.pitch[1]) # Assume equidistant os-ogrid
     dr = abs(ogrid.r[2]-ogrid.r[1]) # Assume equidistant os-ogrid
 
@@ -709,7 +719,7 @@ function plot_Energy_Dist(psgrid::PSGrid,f;overlay = false, its4D=false, renorm 
     npoints = ne*np*nr*nz
 
     #subs = CartesianIndices((ne,np,nr,nz))
-    dE = abs(psgrid.energy[2]-psgrid.energy[1]) # Assume equidistant os-psgrid
+    #dE = abs(psgrid.energy[2]-psgrid.energy[1]) # Assume equidistant os-psgrid
     dp = abs(psgrid.pitch[2] - psgrid.pitch[1]) # Assume equidistant os-psgrid
     dr = abs(psgrid.r[2]-psgrid.r[1]) # Assume equidistant os-psgrid
     dz = abs(psgrid.z[2]-psgrid.z[1]) # Assume equidistant os-psgrid
