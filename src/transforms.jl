@@ -733,8 +733,21 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
     end
 end
 
-function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
-    ctr_passing_spline, trapped_spline, co_passing_spline = class_splines(orbs,F_os_VEC,k; stiffness_factor=stiffness_factor, kwargs...)
+function epr2ps_splined(F_os_VEC::Vector{Float64}, og, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
+    if length(og.energy)==1
+        single_E = true
+        norms = [og.pitch[2]-og.pitch[1],og.r[2]-og.r[1]]
+    else
+        single_E = false
+        norms = [og.energy[2]-og.energy[1],og.pitch[2]-og.pitch[1],og.r[2]-og.r[1]]
+    end
+
+    return epr2ps_splined(F_os_VEC, orbs, PS_orbs, norms; single_E=single_E, verbose=verbose, distributed=distributed, k=k, overlap=overlap, stiffness_factor=stiffness_factor, rescale_factor=rescale_factor, kwargs...) 
+end
+
+function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}, norms::Vector{Float64}; single_E::Bool=false, verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
+    single_E && (return epr2ps_splined_singleE(F_os_VEC, orbs, PS_orbs, norms; verbose=verbose, distributed=distributed, k=k, overlap=overlap, stiffness_factor=stiffness_factor, rescale_factor=rescale_factor, kwargs...))
+    ctr_passing_spline, trapped_spline, co_passing_spline = class_splines(orbs,F_os_VEC,k; stiffness_factor=stiffness_factor, single_E=false, norms=norms, kwargs...)
 
     verbose && print("Evaluating particle-space distribution values.\n")
     if distributed
@@ -773,8 +786,53 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Floa
     return vec(PS_dist)
 end
 
-function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, F_os_VEC::Vector{Float64}, k::Int; filename_prefactor::String = "", read_save_splines::Bool = false, read_save_centers::Bool = false, spline_read_write_dir::String = "", center_read_write_dir::String = "", stiffness_factor::Float64=0.0, verbose::Bool=true)  
-    spline_filename = string(filename_prefactor,"orb_polysplines.jld2")
+function epr2ps_splined_singleE(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}, norms::Vector{Float64}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
+    ctr_passing_spline, trapped_spline, co_passing_spline = class_splines(orbs,F_os_VEC,k; stiffness_factor=stiffness_factor, single_E=true, norms=norms, kwargs...)
+
+    verbose && print("Evaluating particle-space distribution values.\n")
+    if distributed
+        PS_dist = @showprogress @distributed (vcat) for i in PS_orbs
+            if i.class == 'c'
+                val = i.jacdet*ctr_passing_spline.(i.pitch_m,i.r_m)
+            elseif i.class == 'p'
+                val = i.jacdet*co_passing_spline.(i.pitch_m,i.r_m)
+            else    
+                val = i.jacdet*trapped_spline.(i.pitch_m,i.r_m)
+            end
+
+            val
+        end
+    else
+        PS_dist = Vector{Float64}(undef,length(PS_orbs))
+        @showprogress for (io,i) in enumerate(PS_orbs)
+            if i.class == 'c'
+                val = i.jacdet*ctr_passing_spline.(i.pitch_m,i.r_m)
+            elseif i.class == 'p'
+                val = i.jacdet*co_passing_spline.(i.pitch_m,i.r_m)
+            else    
+                val = i.jacdet*trapped_spline.(i.pitch_m,i.r_m)
+            end
+
+            PS_dist[io] = val
+        end
+    end
+
+    if rescale_factor == 1.0
+        PS_dist =  (PS_dist ./ sum(abs.(PS_dist))) .* length(PS_dist)
+    elseif rescale_factor != 0.0
+        PS_dist =  (PS_dist ./ sum(abs.(PS_dist))) .* rescale_factor
+    end
+
+    return vec(PS_dist)
+end
+
+function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, F_os_VEC::Vector{Float64}, k::Int; norms::Vector{Float64}=Float64[], single_E::Bool=false, filename_prefactor::String = "", read_save_splines::Bool = false, read_save_centers::Bool = false, spline_read_write_dir::String = "", center_read_write_dir::String = "", stiffness_factor::Float64=0.0, verbose::Bool=true)  
+    single_E && (filename_prefactor = string(filename_prefactor,"SingleE"))
+    if isempty(norms)
+        spline_filename = string(filename_prefactor,"orb_polysplines.jld2")
+    else
+        spline_filename = string(filename_prefactor,"orb_NORMpolysplines.jld2")
+    end
 
     !isempty(spline_read_write_dir) && cd(spline_read_write_dir)
     if read_save_splines && isfile(spline_filename)
@@ -783,13 +841,22 @@ function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}
     else
         if !read_save_centers
             verbose && print("Sorting orbits into types.\n")
-            ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs)
+            ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs,single_E)
+
+            display(ctr_passing_points)
+            display(single_E)
 
             verbose && print("Calculating splines (RAM intensive).\n")
-            ctr_passing_spline = PolyharmonicSplineInv(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
-            trapped_spline = PolyharmonicSplineInv(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
-            co_passing_spline = PolyharmonicSplineInv(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
 
+            if isempty(norms)
+                ctr_passing_spline = PolyharmonicSplineInv(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
+                trapped_spline = PolyharmonicSplineInv(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
+                co_passing_spline = PolyharmonicSplineInv(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
+            else 
+                ctr_passing_spline = PolyharmonicSplineInvNorm(k,ctr_passing_points,F_os_VEC[ctr_passing_inds],norms;s=stiffness_factor)
+                trapped_spline = PolyharmonicSplineInvNorm(k,trapped_points,F_os_VEC[trapped_inds],norms;s=stiffness_factor)
+                co_passing_spline = PolyharmonicSplineInvNorm(k,co_passing_points,F_os_VEC[co_passing_inds],norms;s=stiffness_factor)
+            end
         else 
             !isempty(center_read_write_dir) && cd(center_read_write_dir)
             center_filename = string(filename_prefactor,"sorted_orbs.jld2") #read_orbs
@@ -800,16 +867,22 @@ function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}
             else
                 verbose && print("Sorting orbits into types & printing to file.\n")
 
-                ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs)
+                ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs,single_E)
                 @save center_filename ctr_passing_points trapped_points co_passing_points ctr_passing_inds trapped_inds co_passing_inds
             end
 
             verbose && print("Calculating splines (RAM intensive).\n")
-            ctr_passing_spline = PolyharmonicSplineInv(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
-            trapped_spline = PolyharmonicSplineInv(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
-            co_passing_spline = PolyharmonicSplineInv(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
+            if isempty(norms)
+                ctr_passing_spline = PolyharmonicSplineInv(k,ctr_passing_points,F_os_VEC[ctr_passing_inds];s=stiffness_factor)
+                trapped_spline = PolyharmonicSplineInv(k,trapped_points,F_os_VEC[trapped_inds];s=stiffness_factor)
+                co_passing_spline = PolyharmonicSplineInv(k,co_passing_points,F_os_VEC[co_passing_inds];s=stiffness_factor)
+            else 
+                ctr_passing_spline = PolyharmonicSplineInvNorm(k,ctr_passing_points,F_os_VEC[ctr_passing_inds],norms;s=stiffness_factor)
+                trapped_spline = PolyharmonicSplineInvNorm(k,trapped_points,F_os_VEC[trapped_inds],norms;s=stiffness_factor)
+                co_passing_spline = PolyharmonicSplineInvNorm(k,co_passing_points,F_os_VEC[co_passing_inds],norms;s=stiffness_factor)
+            end
         end
-    
+
         if read_save_splines
             !isempty(spline_read_write_dir) && cd(spline_read_write_dir)
             verbose && print("Printing splines to file.\n")
@@ -856,7 +929,9 @@ function ps_polyharmonic_spline(PS_orbs::Vector{GCEPRCoordinate}, F_ps_Weights::
     return spline
 end
 
-function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}})  
+function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}},single_E::Bool)  
+    single_E && (return orbsort_singleE(orbs)) 
+
     ctr_passing_points = SVector{3, Float64}[]
     ctr_passing_inds = Int[]
     trapped_points = SVector{3, Float64}[]
@@ -890,6 +965,44 @@ function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vect
     ctr_passing_points = copy(reshape(reinterpret(Float64, ctr_passing_points), (3,ctr_passing_num)))
     trapped_points =  copy(reshape(reinterpret(Float64, trapped_points), (3,trapped_num)))
     co_passing_points =  copy(reshape(reinterpret(Float64, co_passing_points), (3,co_passing_num)))
+
+    return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
+end
+
+function orbsort_singleE(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}})  
+    ctr_passing_points = SVector{2, Float64}[]
+    ctr_passing_inds = Int[]
+    trapped_points = SVector{2, Float64}[]
+    trapped_inds = Int[]
+    co_passing_points = SVector{2, Float64}[]
+    co_passing_inds = Int[]
+
+    ctr_passing_num = 0
+    trapped_num = 0
+    co_passing_num = 0
+
+    @showprogress for (io,i) in enumerate(orbs)
+        if i.class == :ctr_passing
+            push!(ctr_passing_points,SVector{2}(i.coordinate.pitch,i.coordinate.r)) #is this efficient?
+            push!(ctr_passing_inds,io)
+            ctr_passing_num += 1
+        end
+        if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
+            push!(trapped_points,SVector{2}(i.coordinate.pitch,i.coordinate.r))
+            push!(trapped_inds,io)
+            trapped_num += 1
+        end
+        if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+            push!(co_passing_points,SVector{2}(i.coordinate.pitch,i.coordinate.r))
+            push!(co_passing_inds,io)
+            co_passing_num += 1
+        end
+        
+    end
+
+    ctr_passing_points = copy(reshape(reinterpret(Float64, ctr_passing_points), (2,ctr_passing_num)))
+    trapped_points =  copy(reshape(reinterpret(Float64, trapped_points), (2,trapped_num)))
+    co_passing_points =  copy(reshape(reinterpret(Float64, co_passing_points), (2,co_passing_num)))
 
     return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
 end
@@ -1003,6 +1116,69 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     end
 
     return EPRZDensity(f_eprz,energy,pitch,r,z)
+end
+
+function ps_cleaner(F_ps_Weights::Vector{Float64}, F_os_VEC::Vector{Float64}, og::Union{OrbitGrid{T},OrbitGrid},  psgrid::PSGrid; threshold::Float64=0.0) where {T}
+    F_ps_Weights = [isnan(i) ? 0.0 : i for i in F_ps_Weights] #Removing Nans
+    F_ps_Weights = [i < 0.0 ? 0.0 : i for i in F_ps_Weights]    #Removing negative values
+
+    if length(og.energy) == length(psgrid.energy)
+        for i in 1:length(psgrid.energy)
+            ogi = filter(x -> x != 0, og.orbit_index[i,:,:])
+            fps_inds = filter(x -> x != 0, psgrid.point_index[i,:,:,:])
+            F_ps_Weights[fps_inds] = F_ps_Weights[fps_inds] .* sum(F_os_VEC[ogi])
+        end
+    end
+
+    sorted = sort(F_ps_Weights,rev=true)
+    if threshold == 0.0
+        display(sorted)
+        print("Enter number of outliers to clean:\n")
+        sleep(1)
+        num = readline()
+        num = parse(Int64, num)
+
+        print("Largest $(num) entries will be cleaned.\n")
+    else
+        threshold = threshold*mean(F_ps_Weights)
+        num=0
+        for i in 1:length(F_ps_Weights) 
+            (sorted[i] < threshold) && break
+            num=i
+        end
+
+        print("Largest $(num) entries will be cleaned.\n")
+    end
+
+    old_values = zeros(Float64,num)
+    new_values = zeros(Float64,num)
+    cleaned_args = []
+
+    F_ps_matrix = ps_VectorToMatrix(F_ps_Weights,psgrid)
+    @showprogress for i in 1:num
+        all_inds = CartesianIndices((length(psgrid.energy),length(psgrid.pitch),length(psgrid.r),length(psgrid.z)))
+        args = argmax(F_ps_matrix)
+        max_type = psgrid.class[args[1],args[2],args[3],args[4]]
+        elligibles = filter(x -> (psgrid.class[x[1],x[2],x[3],x[4]]==max_type)&&(x!=args), all_inds[args[1]-1:args[1]+1,args[2]-1:args[2]+1,args[3]-1:args[3]+1,args[4]-1:args[4]+1])
+        new_val = mean(F_ps_matrix[elligibles]) 
+
+        old_values[i] = maximum(F_ps_matrix)
+        new_values[i] = new_val
+        push!(cleaned_args, (argmax(F_ps_Weights),args))
+
+        F_ps_matrix[args[1],args[2],args[3],args[4]] = new_val
+        F_ps_Weights[argmax(F_ps_Weights)] = new_val
+    end
+
+    if length(og.energy) == length(psgrid.energy)
+        for i in 1:length(psgrid.energy)
+            ogi = filter(x -> x != 0, og.orbit_index[i,:,:])
+            fps_inds = filter(x -> x != 0, psgrid.point_index[i,:,:,:])
+            F_ps_Weights[fps_inds] = F_ps_Weights[fps_inds] .* sum(F_os_VEC[ogi])
+        end
+    end
+
+    return F_ps_Weights,old_values,new_values,cleaned_args
 end
 
 function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) 
