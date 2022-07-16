@@ -19,7 +19,7 @@ end
 
 This function takes a gcp particle, calculates the orbit using integrate, and the jacobian determinant of the transform using ForwardDiff, and returns a GCEPRCoordinate. Used in fill_PSGrid.
 """
-function getGCEPRCoord(M::AbstractEquilibrium, wall::Union{Nothing,Wall},gcp::GCParticle; gcvalid_check::Bool=false, vacuum::Bool=false,drift::Bool=true, kwargs...)
+function getGCEPRCoord(M::AbstractEquilibrium, wall::Union{Nothing,Wall},gcp::GCParticle; gcvalid_check::Bool=false, vacuum::Bool=false,drift::Bool=true, toa::Bool=true, kwargs...)
     ed = ForwardDiff.Dual(gcp.energy,  (0.0,0.0,0.0))
     pd = ForwardDiff.Dual(gcp.pitch,  (1.0,0.0,0.0))
     rd = ForwardDiff.Dual(gcp.r,  (0.0,1.0,0.0))
@@ -28,11 +28,11 @@ function getGCEPRCoord(M::AbstractEquilibrium, wall::Union{Nothing,Wall},gcp::GC
     gcp0 = GCParticle(ed,pd,rd,zd,gcp.m,gcp.q)
 
     if gcvalid_check 
-        path, stat = integrate(M, gcp0; wall=wall,one_transit=true, r_callback=true, classify_orbit=true, store_path=true, drift=drift, vacuum=vacuum, toa=true, limit_phi=true, kwargs...)
+        path, stat = integrate(M, gcp0; wall=wall,one_transit=true, r_callback=true, classify_orbit=true, store_path=true, drift=drift, vacuum=vacuum, toa=toa, kwargs...)
         CleanPath = OrbitPath(vacuum,drift,ForwardDiff.value.(path.energy),ForwardDiff.value.(path.pitch),ForwardDiff.value.(path.r),ForwardDiff.value.(path.z),ForwardDiff.value.(path.phi),ForwardDiff.value.(path.dt))               
         gcvalid = gcde_check(M, gcp, CleanPath) 
     else
-        path, stat = integrate(M, gcp0; wall=wall,one_transit=true, r_callback=true, classify_orbit=true, store_path=false, drift=drift, vacuum=vacuum, toa=true, limit_phi=true, kwargs...)
+        path, stat = integrate(M, gcp0; wall=wall,one_transit=true, r_callback=true, classify_orbit=true, store_path=false, drift=drift, vacuum=vacuum, toa=toa, kwargs...)
         gcvalid=false
     end
 
@@ -84,7 +84,7 @@ end
 
 This function uses a distributed for loop to apply getGCEPRCoord to every point in a 4D grid specified by the vectors energy, pitch, r and z.
 """
-function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector;  q=1, amu=OrbitTomography.H2_amu, verbose = false, print_results = false, filename_prefactor = "", distributed=true,  gcvalid_check::Bool=false, kwargs...)
+function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector;  q=1, amu=OrbitTomography.H2_amu, verbose = false, print_results = false, filename_prefactor = "", distributed=true,  gcvalid_check::Bool=false, toa::Bool=true, kwargs...)
     nenergy = length(energy)
     npitch = length(pitch)
     nr = length(r)
@@ -107,7 +107,7 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
                 o = GCEPRCoordinate(c,'i') 
             else
                 try
-                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
+                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, toa=toa, kwargs...)
                 catch
                     o = GCEPRCoordinate(c,'i') 
                 end
@@ -129,7 +129,7 @@ function fill_PSGrid(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::
                 o = GCEPRCoordinate(c,'i') 
             else
                 try
-                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
+                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, toa=toa, kwargs...)
                 catch
                     o = GCEPRCoordinate(c,'i') 
                 end
@@ -547,7 +547,7 @@ Each distributed batch of GCEPRCoords is printed straight to file by its remote 
     @everywhere cd(path)"
 Then state filename_prefactor=filename_prefactor in the function input
 """
-function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector; filename_prefactor = "", gcvalid_check::Bool=false, batch_multipler=20, q=1, amu=OrbitTomography.H2_amu, verbose = false, debug=false, kwargs...)
+function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, energy::AbstractVector, pitch::AbstractVector, r::AbstractVector, z::AbstractVector; filename_prefactor = "", gcvalid_check::Bool=false, batch_multipler=20, q=1, amu=OrbitTomography.H2_amu, toa::Bool=true, verbose = false, debug=false, kwargs...)
     path=pwd()
 
     mkdir(string(filename_prefactor,"_Batches"))
@@ -570,13 +570,13 @@ function fill_PSGrid_batch(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, en
 
     print("Num batches = ",(loop_batches+1),"\n")
 
-    writebatch = x -> fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,x,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, gcvalid_check=gcvalid_check, kwargs...)
+    writebatch = x -> fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,x,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, gcvalid_check=gcvalid_check, toa=toa, kwargs...)
 
     if !debug
         pmap(writebatch, collect(1:(loop_batches+1)))
     else
         for i in 1:(loop_batches+1)
-            fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,i,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, gcvalid_check=gcvalid_check, kwargs...)
+            fillPSGrid_single_pmap(M,wall,energy,pitch,r,z,i,batch,loop_batches; q=q, amu=amu, filename_prefactor = filename_prefactor, gcvalid_check=gcvalid_check, toa=toa, kwargs...)
         end
     end
 
@@ -603,7 +603,7 @@ end
 
 This function is used internally within fill_PSGrid_batch. It is inputted to pmap within fill_PSGrid_batch. It sets up a local for loop on each remote worker that calculates the orbits of a specific batch specified by the inputs batch_num, batch and loop_batches.
 """
-function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall},energy::AbstractVector{T},pitch::AbstractVector{T},r::AbstractVector{T},z::AbstractVector{T},batch_num::Int,batch::Int,loop_batches::Int; q::Int=1, amu::Float64=OrbitTomography.H2_amu, filename_prefactor::String="", gcvalid_check=false, kwargs...) where T<:AbstractFloat
+function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall},energy::AbstractVector{T},pitch::AbstractVector{T},r::AbstractVector{T},z::AbstractVector{T},batch_num::Int,batch::Int,loop_batches::Int; q::Int=1, amu::Float64=OrbitTomography.H2_amu, filename_prefactor::String="", gcvalid_check=false, toa::Bool=true, kwargs...) where T<:AbstractFloat
     nenergy = length(energy)
     npitch = length(pitch)
     nr = length(r)
@@ -624,7 +624,7 @@ function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall}
                 o = GCEPRCoordinate(c,'i')  
             else
                 try
-                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
+                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, toa=toa, kwargs...)
                 catch
                     o = GCEPRCoordinate(c,'i')  
                 end
@@ -648,7 +648,7 @@ function fillPSGrid_single_pmap(M::AbstractEquilibrium,wall::Union{Nothing,Wall}
                 o = GCEPRCoordinate(c,'i')  
             else
                 try
-                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, kwargs...)
+                    o = getGCEPRCoord(M,wall,c; gcvalid_check=gcvalid_check, toa=toa, kwargs...)
                 catch
                     o = GCEPRCoordinate(c,'i')  
                 end
