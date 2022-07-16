@@ -843,9 +843,6 @@ function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}
             verbose && print("Sorting orbits into types.\n")
             ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds = orbsort(orbs,single_E)
 
-            display(ctr_passing_points)
-            display(single_E)
-
             verbose && print("Calculating splines (RAM intensive).\n")
 
             if isempty(norms)
