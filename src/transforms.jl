@@ -1115,20 +1115,15 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return EPRZDensity(f_eprz,energy,pitch,r,z)
 end
 
-function ps_cleaner(F_ps_Weights::Vector{Float64}, F_os_VEC::Vector{Float64}, og::Union{OrbitGrid{T},OrbitGrid},  psgrid::PSGrid; threshold::Float64=0.0) where {T}
+function ps_cleaner(F_ps_Weights::Vector{Float64},  psgrid::PSGrid; class_specific::Bool=false, threshold::Float64=0.0, num0::Int=0, rescale_factor::Number = 1.0, E_range::Int=0, range::Int=1) where {T}
     F_ps_Weights = [isnan(i) ? 0.0 : i for i in F_ps_Weights] #Removing Nans
-    F_ps_Weights = [i < 0.0 ? 0.0 : i for i in F_ps_Weights]    #Removing negative values
-
-    if length(og.energy) == length(psgrid.energy)
-        for i in 1:length(psgrid.energy)
-            ogi = filter(x -> x != 0, og.orbit_index[i,:,:])
-            fps_inds = filter(x -> x != 0, psgrid.point_index[i,:,:,:])
-            F_ps_Weights[fps_inds] = F_ps_Weights[fps_inds] .* sum(F_os_VEC[ogi])
-        end
-    end
+    F_ps_Weights = [i < 0.0 ? 0.0 : i for i in F_ps_Weights]  #Removing negative values
 
     sorted = sort(F_ps_Weights,rev=true)
-    if threshold == 0.0
+    if num0 != 0
+        num = num0
+        print("Largest $(num) entries will be cleaned.\n")
+    elseif threshold == 0.0
         display(sorted)
         print("Enter number of outliers to clean:\n")
         sleep(1)
@@ -1150,32 +1145,74 @@ function ps_cleaner(F_ps_Weights::Vector{Float64}, F_os_VEC::Vector{Float64}, og
     old_values = zeros(Float64,num)
     new_values = zeros(Float64,num)
     cleaned_args = []
+    surrounding_classes = []
+    surrounding_values = []
+    uncleaned = copy(F_ps_Weights);
 
-    F_ps_matrix = ps_VectorToMatrix(F_ps_Weights,psgrid)
+    F_ps_matrix = ps_VectorToMatrix(F_ps_Weights,psgrid);
     @showprogress for i in 1:num
         all_inds = CartesianIndices((length(psgrid.energy),length(psgrid.pitch),length(psgrid.r),length(psgrid.z)))
         args = argmax(F_ps_matrix)
         max_type = psgrid.class[args[1],args[2],args[3],args[4]]
-        elligibles = filter(x -> (psgrid.class[x[1],x[2],x[3],x[4]]==max_type)&&(x!=args), all_inds[args[1]-1:args[1]+1,args[2]-1:args[2]+1,args[3]-1:args[3]+1,args[4]-1:args[4]+1])
+
+        e1 = max(args[1]-E_range,1)
+        p1 = max(args[2]-range,1)
+        r1 = max(args[3]-range,1)
+        z1 = max(args[4]-range,1)
+
+        e2 = min(args[1]+E_range,length(psgrid.energy))
+        p2 = min(args[2]+range,length(psgrid.pitch))
+        r2 = min(args[3]+range,length(psgrid.r))
+        z2 = min(args[4]+range,length(psgrid.z))
+
+        #args[1]-E_range:args[1]+E_range,args[2]-range:args[2]+range,args[3]-range:args[3]+range,args[4]-range:args[4]+range
+        #becomes e1:e2,p1:p2,r1:r2,z1:z2
+
+        if class_specific 
+            elligibles = filter(x -> (psgrid.class[x[1],x[2],x[3],x[4]]==max_type)&&(x!=args), all_inds[e1:e2,p1:p2,r1:r2,z1:z2])
+        else
+            elligibles = filter(x -> (psgrid.class[x[1],x[2],x[3],x[4]]!='i')&&(x!=args), all_inds[e1:e2,p1:p2,r1:r2,z1:z2])
+        
+        end
         new_val = mean(F_ps_matrix[elligibles]) 
 
         old_values[i] = maximum(F_ps_matrix)
         new_values[i] = new_val
         push!(cleaned_args, (argmax(F_ps_Weights),args))
+        push!(surrounding_values, F_ps_matrix[e1:e2,p1:p2,r1:r2,z1:z2])
+        push!(surrounding_classes, psgrid.class[e1:e2,p1:p2,r1:r2,z1:z2])
 
         F_ps_matrix[args[1],args[2],args[3],args[4]] = new_val
         F_ps_Weights[argmax(F_ps_Weights)] = new_val
     end
 
-    if length(og.energy) == length(psgrid.energy)
-        for i in 1:length(psgrid.energy)
-            ogi = filter(x -> x != 0, og.orbit_index[i,:,:])
-            fps_inds = filter(x -> x != 0, psgrid.point_index[i,:,:,:])
-            F_ps_Weights[fps_inds] = F_ps_Weights[fps_inds] .* sum(F_os_VEC[ogi])
-        end
-    end
+    F_ps_Weights = F_ps_Weights .* (rescale_factor*length(F_ps_Weights)/sum(F_ps_Weights))
+    uncleaned = uncleaned .* (rescale_factor*length(uncleaned)/sum(uncleaned))
 
-    return F_ps_Weights,old_values,new_values,cleaned_args
+    return F_ps_Weights,old_values,new_values,surrounding_classes,surrounding_values,uncleaned
+end
+
+function ps_energyfix(F_ps_Weights::Vector{Float64}, F_os_VEC::Vector{Float64}, og::Union{OrbitGrid{T},OrbitGrid},  psgrid::PSGrid; F_ps_Weights0::Vector{Float64}=Float64[], ps_Efix::Bool=false, info::Bool=false, rescale_factor::Number = 1.0) where {T}
+    length(psgrid.energy) != length(og.energy) && throw(DimensionMismatch())
+    scales = zeros(Float64,length(psgrid.energy))
+    scalestest = zeros(Float64,length(psgrid.energy))
+
+    for i in 1:length(psgrid.energy)
+        orb_e_inds = filter(x->x!=0, og.orbit_index[i,:,:]);
+        ps_e_inds = filter(x->x!=0, psgrid.point_index[i,:,:,:]);
+
+        (ps_Efix && !isempty(F_ps_Weights0)) ? (scale_factor = mean(F_ps_Weights0[ps_e_inds])) : (scale_factor = mean(F_os_VEC[orb_e_inds]))
+
+        F_ps_Weights[ps_e_inds] = F_ps_Weights[ps_e_inds] .* (scale_factor*length(ps_e_inds)/sum(F_ps_Weights[ps_e_inds]))
+
+        scales[i]=scale_factor
+        scalestest[i]=mean(F_ps_Weights[ps_e_inds])
+    end
+    F_ps_Weights = [isnan(x) ? 0.0 : x for x in F_ps_Weights]
+    F_ps_Weights = F_ps_Weights .* (rescale_factor*length(F_ps_Weights)/sum(F_ps_Weights))
+
+    info && (return F_ps_Weights,scales,scalestest)
+    return F_ps_Weights
 end
 
 function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) 
@@ -1352,7 +1389,7 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::U
     return vec(F_os_VEC)
 end
 
-function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; distributed=false, rescale_factor=0.0, verbose=true, kwargs...)  #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
+function ps2epr_polysplined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; distributed=false, rescale_factor=0.0, verbose=true, kwargs...)  #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
     num_psorbs = length(PS_orbs)
 
     spline = ps_polyharmonic_spline(PS_orbs, F_ps_Weights; verbose=verbose, kwargs...)
@@ -1394,6 +1431,177 @@ function ps2epr_splined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoor
             os_dist[io] = integrated_weight
         end
     end
+
+    if rescale_factor == 1.0
+        os_dist =  (os_dist ./ sum(abs.(os_dist))) .* length(os_dist)
+    elseif rescale_factor != 0.0
+        os_dist =  (os_dist ./ sum(abs.(os_dist))) .* rescale_factor
+    end
+    return vec(os_dist)
+end
+
+#MUST debug distributed version
+function ps2epr_bsplined(F_ps_Weights::Vector{Float64}, psgrid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, og::Union{OrbitGrid{T},OrbitGrid}; spline_type = BSpline(Cubic(Flat(OnCell()))), distributed::Bool=false, rescale_factor=0.0, use_slice_E::Bool=true, verbose=true, psgridEprefactor = "", gcvalid_check::Bool=false) where {T}
+    F_ps_WeightsMatrix = ps_VectorToMatrix(F_ps_Weights,psgrid)
+
+    if distributed
+        @everywhere psenergy = psgrid.energy
+        @everywhere pspitch = psgrid.pitch
+
+        if use_slice_E
+            length(og.energy)!=length(psgrid.energy) && throw(DimensionMismatch())
+            orig_orbit_index = og.orbit_index
+
+            weights_inds = @showprogress @distributed (hcat) for slice_E in 1:length(og.energy)
+                F_ps_WeightsMatrixE = F_ps_WeightsMatrix[slice_E,:,:,:]
+                og_orbsE,ogE = energy_slice(og,og_orbs;ind=slice_E)
+                orbE_inds = filter(x->x!=0,orig_orbit_index[slice_E,:,:])
+                if isfile(string(psgridEprefactor,"(E",slice_E,")PSGrid.jld2")) && isfile(string(psgridEprefactor,"(E",slice_E,")GCEPRCoords.jld2"))
+                    psgridE = read_PSGrid(string(psgridEprefactor,"(E",slice_E,")PSGrid.jld2"))
+                    psorbsE,gcvalid_checkE,vacuum,drift = read_GCEPRCoords(string(psgridEprefactor,"(E",slice_E,")GCEPRCoords.jld2"))
+                else
+                    psorbsE, psgridE, gcvalid_checkE = energy_slice(psgrid,psgrid,gcvalid_check,slice_E)
+                end
+
+                os_dist =  Array{Float64}(undef,2,length(og_orbsE))
+
+                psgrid_pitch = range(psgridE.pitch[1],psgridE.pitch[end],length(psgridE.pitch))
+                psgrid_r = range(psgridE.r[1],psgridE.r[end],length(psgridE.r))
+                psgrid_z = range(psgridE.z[1],psgridE.z[end],length(psgridE.z))
+                itp =  Interpolations.scale(interpolate(F_ps_WeightsMatrixE, spline_type),psgrid_pitch,psgrid_r,psgrid_z)
+                sitp = extrapolate(itp,Flat())
+
+                for iter=1:length(og_orbsE)
+                    orb = og_orbsE[iter]
+                    integrated_weight = 0.0
+        
+                    for path_iter = 1:(length(orb.path.r)-1)
+                        F_os_i = orb.path.jacdets[path_iter]*sitp(orb.path.pitch[path_iter],orb.path.r[path_iter],orb.path.z[path_iter])
+
+
+                        #Checking Energy Bounds:
+                        if (orb.path.energy[path_iter] > (psenergy[end]+0.5*(psenergy[end]-psenergy[end-1]))) || (orb.path.energy[path_iter] < (psenergy[1]-0.5*(psenergy[2]-psenergy[1]))) || (orb.path.energy[path_iter] < 0.0)
+                            F_os_i = 0.0
+                        end
+                        #Checking Pitch Bounds:
+                        if pspitch[end]>pspitch[1]
+                            if (orb.path.pitch[path_iter] > (pspitch[end]+0.5*abs(pspitch[end]-pspitch[end-1]))) || (orb.path.pitch[path_iter] < (pspitch[1]-0.5*abs(pspitch[2]-pspitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
+                                F_os_i = 0.0
+                            end
+                        else
+                            if (orb.path.pitch[path_iter] < (pspitch[end]-0.5*abs(pspitch[end]-pspitch[end-1]))) || (orb.path.pitch[path_iter] > (pspitch[1]+0.5*abs(pspitch[2]-pspitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
+                                F_os_i = 0.0
+                            end
+                        end
+                        #Rely on wall for RZ-bounds
+        
+                        if path_iter==1
+                            integrated_weight += F_os_i*(0.5*orb.path.dt[1]+0.5*orb.path.dt[end-1])/orb.tau_p
+                        else
+                            integrated_weight += F_os_i*(0.5*orb.path.dt[path_iter]+0.5*orb.path.dt[path_iter-1])/orb.tau_p
+                        end
+                    end
+
+                    os_dist[:,iter] = [orbE_inds[iter],integrated_weight]
+                end 
+
+                os_dist
+            end
+
+            os_dist = zeros(length(og_orbs))
+            @inbounds for i in 1:length(og_orbs)
+                os_dist[Int(weights_inds[1,i])] = weights_inds[2,i]
+            end
+
+        else
+            psgrid_energy = range(psgrid.energy[1],psgrid.energy[end],length(psgrid.energy)) 
+            psgrid_pitch = range(psgrid.pitch[1],psgrid.pitch[end],length(psgrid.pitch))
+            psgrid_r = range(psgrid.r[1],psgrid.r[end],length(psgrid.r))
+            psgrid_z = range(psgrid.z[1],psgrid.z[end],length(psgrid.z))
+            itp = Interpolations.scale(interpolate(F_ps_WeightsMatrix, spline_type),psgrid_energy,psgrid_pitch,psgrid_r,psgrid_z)
+            sitp = extrapolate(itp,Flat())
+
+            os_dist = @showprogress @distributed (vcat) for iter=1:length(og_orbs)
+                orb = og_orbs[iter]
+                integrated_weight = 0.0
+
+                for path_iter = 1:(length(orb.path.r)-1)
+                    F_os_i = orb.path.jacdets[path_iter]*sitp(orb.path.energy[path_iter],orb.path.pitch[path_iter],orb.path.r[path_iter],orb.path.z[path_iter])
+
+                    #Checking Energy Bounds:
+                    if (orb.path.energy[path_iter] > (psenergy[end]+0.5*(psenergy[end]-psenergy[end-1]))) || (orb.path.energy[path_iter] < (psenergy[1]-0.5*(psenergy[2]-psenergy[1]))) || (orb.path.energy[path_iter] < 0.0)
+                        F_os_i = 0.0
+                    end
+                    #Checking Pitch Bounds:
+                    if pspitch[end]>pspitch[1]
+                        if (orb.path.pitch[path_iter] > (pspitch[end]+0.5*abs(pspitch[end]-pspitch[end-1]))) || (orb.path.pitch[path_iter] < (pspitch[1]-0.5*abs(pspitch[2]-pspitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
+                            F_os_i = 0.0
+                        end
+                    else
+                        if (orb.path.pitch[path_iter] < (pspitch[end]-0.5*abs(pspitch[end]-pspitch[end-1]))) || (orb.path.pitch[path_iter] > (pspitch[1]+0.5*abs(pspitch[2]-pspitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
+                            F_os_i = 0.0
+                        end
+                    end
+                    #Rely on wall for RZ-bounds
+
+                    if path_iter==1
+                        integrated_weight += F_os_i*(0.5*orb.path.dt[1]+0.5*orb.path.dt[end-1])/orb.tau_p
+                    else
+                        integrated_weight += F_os_i*(0.5*orb.path.dt[path_iter]+0.5*orb.path.dt[path_iter-1])/orb.tau_p
+                    end
+                end
+
+                integrated_weight
+            end
+        end
+    else
+        psenergy = psgrid.energy
+        pspitch = psgrid.pitch
+
+        psgrid_energy = range(psgrid.energy[1],psgrid.energy[end],length(psgrid.energy)) 
+        psgrid_pitch = range(psgrid.pitch[1],psgrid.pitch[end],length(psgrid.pitch))
+        psgrid_r = range(psgrid.r[1],psgrid.r[end],length(psgrid.r))
+        psgrid_z = range(psgrid.z[1],psgrid.z[end],length(psgrid.z))
+        itp=Interpolations.scale(interpolate(F_ps_WeightsMatrix, spline_type),psgrid_energy,psgrid_pitch,psgrid_r,psgrid_z)
+
+        sitp = extrapolate(itp,Flat())
+
+        os_dist = zeros(length(og_orbs))
+        @showprogress for iter=1:length(og_orbs)
+            orb = og_orbs[iter]
+            integrated_weight = 0.0
+
+            for path_iter = 1:(length(orb.path.r)-1)
+                F_os_i = orb.path.jacdets[path_iter]*sitp(orb.path.energy[path_iter],orb.path.pitch[path_iter],orb.path.r[path_iter],orb.path.z[path_iter])
+
+                #Checking Energy Bounds:
+                if (orb.path.energy[path_iter] > (psenergy[end]+0.5*(psenergy[end]-psenergy[end-1]))) || (orb.path.energy[path_iter] < (psenergy[1]-0.5*(psenergy[2]-psenergy[1]))) || (orb.path.energy[path_iter] < 0.0)
+                    F_os_i = 0.0
+                end
+                #Checking Pitch Bounds:
+                if pspitch[end]>pspitch[1]
+                    if (orb.path.pitch[path_iter] > (pspitch[end]+0.5*abs(pspitch[end]-pspitch[end-1]))) || (orb.path.pitch[path_iter] < (pspitch[1]-0.5*abs(pspitch[2]-pspitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
+                        F_os_i = 0.0
+                    end
+                else
+                    if (orb.path.pitch[path_iter] < (pspitch[end]-0.5*abs(pspitch[end]-pspitch[end-1]))) || (orb.path.pitch[path_iter] > (pspitch[1]+0.5*abs(pspitch[2]-pspitch[1]))) || abs(orb.path.pitch[path_iter]) > 1.0
+                        F_os_i = 0.0
+                    end
+                end
+                #Rely on wall for RZ-bounds
+
+                if path_iter==1
+                    integrated_weight += F_os_i*(0.5*orb.path.dt[1]+0.5*orb.path.dt[end-1])/orb.tau_p
+                else
+                    integrated_weight += F_os_i*(0.5*orb.path.dt[path_iter]+0.5*orb.path.dt[path_iter-1])/orb.tau_p
+                end
+            end
+
+            os_dist[iter] = integrated_weight
+        end
+    end
+
+    os_dist = [x<0.0 ? 0.0 : x for x in os_dist]
 
     if rescale_factor == 1.0
         os_dist =  (os_dist ./ sum(abs.(os_dist))) .* length(os_dist)
