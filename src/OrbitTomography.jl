@@ -38,9 +38,6 @@ using Optim
 using Sobol
 using ForwardDiff
 using Roots
-using Plots
-using Plots.PlotMeasures
-using LaTeXStrings
 import IterTools: nth
 
 const S3 = SVector{3}
@@ -116,9 +113,5 @@ export gaussian, slowing_down, approx_slowing_down, bimaxwellian, maxwellian
 
 include("basis.jl")
 export Basis, construct_basis, evaluate
-
-include("visualisation.jl")
-export plot_PS_distribution_drop_dims, plot_PS_distribution_EP, plot_OG_distribution_drop_dims, plot_OG_distribution_ALL_E
-export Overplot_topological_contour, Overplot_topological_contour2, plot_Energy_Dist, plot_topological_boundary, map_orbits_no_scaling
 
 end # module
