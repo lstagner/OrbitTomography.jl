@@ -966,6 +966,46 @@ function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vect
     return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
 end
 
+function orbsort_v2(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}},single_E::Bool)  
+    single_E && (return orbsort_singleE(orbs)) 
+
+    ctr_passing_points = SVector{3, Float64}[]
+    ctr_passing_inds = Int[]
+    trapped_points = SVector{3, Float64}[]
+    trapped_inds = Int[]
+    co_passing_points = SVector{3, Float64}[]
+    co_passing_inds = Int[]
+
+    ctr_passing_num = 0
+    trapped_num = 0
+    co_passing_num = 0
+
+    @showprogress for (io,i) in enumerate(orbs)
+        if (i.class == :ctr_passing || (i.coordinate.pitch<0.0 && i.class == :stagnation))
+            push!(ctr_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r)) #is this efficient?
+            push!(ctr_passing_inds,io)
+            ctr_passing_num += 1
+        end
+        if (i.class == :trapped || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
+            push!(trapped_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
+            push!(trapped_inds,io)
+            trapped_num += 1
+        end
+        if (i.class == :co_passing || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
+            push!(co_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
+            push!(co_passing_inds,io)
+            co_passing_num += 1
+        end
+        
+    end
+
+    ctr_passing_points = copy(reshape(reinterpret(Float64, ctr_passing_points), (3,ctr_passing_num)))
+    trapped_points =  copy(reshape(reinterpret(Float64, trapped_points), (3,trapped_num)))
+    co_passing_points =  copy(reshape(reinterpret(Float64, co_passing_points), (3,co_passing_num)))
+
+    return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
+end
+
 function orbsort_singleE(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}})  
     ctr_passing_points = SVector{2, Float64}[]
     ctr_passing_inds = Int[]
@@ -990,6 +1030,44 @@ function orbsort_singleE(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64
             trapped_num += 1
         end
         if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+            push!(co_passing_points,SVector{2}(i.coordinate.pitch,i.coordinate.r))
+            push!(co_passing_inds,io)
+            co_passing_num += 1
+        end
+        
+    end
+
+    ctr_passing_points = copy(reshape(reinterpret(Float64, ctr_passing_points), (2,ctr_passing_num)))
+    trapped_points =  copy(reshape(reinterpret(Float64, trapped_points), (2,trapped_num)))
+    co_passing_points =  copy(reshape(reinterpret(Float64, co_passing_points), (2,co_passing_num)))
+
+    return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
+end
+
+function orbsort_singleE_v2(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}})  
+    ctr_passing_points = SVector{2, Float64}[]
+    ctr_passing_inds = Int[]
+    trapped_points = SVector{2, Float64}[]
+    trapped_inds = Int[]
+    co_passing_points = SVector{2, Float64}[]
+    co_passing_inds = Int[]
+
+    ctr_passing_num = 0
+    trapped_num = 0
+    co_passing_num = 0
+
+    @showprogress for (io,i) in enumerate(orbs)
+        if (i.class == :ctr_passing || (i.coordinate.pitch<0.0 && i.class == :stagnation))
+            push!(ctr_passing_points,SVector{2}(i.coordinate.pitch,i.coordinate.r)) #is this efficient?
+            push!(ctr_passing_inds,io)
+            ctr_passing_num += 1
+        end
+        if (i.class == :trapped || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
+            push!(trapped_points,SVector{2}(i.coordinate.pitch,i.coordinate.r))
+            push!(trapped_inds,io)
+            trapped_num += 1
+        end
+        if (i.class == :co_passing || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
             push!(co_passing_points,SVector{2}(i.coordinate.pitch,i.coordinate.r))
             push!(co_passing_inds,io)
             co_passing_num += 1
@@ -1115,9 +1193,13 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return EPRZDensity(f_eprz,energy,pitch,r,z)
 end
 
-function ps_cleaner(F_ps_Weights::Vector{Float64},  psgrid::PSGrid; class_specific::Bool=false, threshold::Float64=0.0, num0::Int=0, rescale_factor::Number = 1.0, E_range::Int=0, range::Int=1) where {T}
+function ps_cleaner(F_ps_Weights::Vector{Float64},  psgrid::PSGrid; zbounds = [0.0,0.0], PS_orbs=nothing, class_specific::Bool=false, threshold::Float64=0.0, num0::Int=0, rescale_factor::Number = 1.0, E_range::Int=0, range::Int=1) where {T}
     F_ps_Weights = [isnan(i) ? 0.0 : i for i in F_ps_Weights] #Removing Nans
     F_ps_Weights = [i < 0.0 ? 0.0 : i for i in F_ps_Weights]  #Removing negative values
+    if zbounds!=[0.0,0.0] #Removing disconnected regions
+        isnothing(PS_orbs) && error("Input ps_orbs to implement zbounds.")
+        F_ps_Weights = [(PS_orbs[i].z_m < minimum(zbounds) || PS_orbs[i].z_m > maximum(zbounds)) ? 0.0 : F_ps_Weights[i] for i in 1:length(PS_orbs)]  
+    end
 
     sorted = sort(F_ps_Weights,rev=true)
     if num0 != 0
