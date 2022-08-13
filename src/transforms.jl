@@ -941,17 +941,17 @@ function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vect
     co_passing_num = 0
 
     @showprogress for (io,i) in enumerate(orbs)
-        if i.class == :ctr_passing
+        if (i.class == :ctr_passing || (i.coordinate.pitch<0.0 && i.class == :stagnation))
             push!(ctr_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r)) #is this efficient?
             push!(ctr_passing_inds,io)
             ctr_passing_num += 1
         end
-        if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
+        if (i.class == :trapped || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
             push!(trapped_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
             push!(trapped_inds,io)
             trapped_num += 1
         end
-        if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+        if (i.class == :co_passing || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
             push!(co_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
             push!(co_passing_inds,io)
             co_passing_num += 1
@@ -1019,17 +1019,17 @@ function orbsort_singleE(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64
     co_passing_num = 0
 
     @showprogress for (io,i) in enumerate(orbs)
-        if i.class == :ctr_passing
+        if (i.class == :ctr_passing || (i.coordinate.pitch<0.0 && i.class == :stagnation))
             push!(ctr_passing_points,SVector{2}(i.coordinate.pitch,i.coordinate.r)) #is this efficient?
             push!(ctr_passing_inds,io)
             ctr_passing_num += 1
         end
-        if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
+        if (i.class == :trapped || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
             push!(trapped_points,SVector{2}(i.coordinate.pitch,i.coordinate.r))
             push!(trapped_inds,io)
             trapped_num += 1
         end
-        if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
+        if (i.class == :co_passing || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
             push!(co_passing_points,SVector{2}(i.coordinate.pitch,i.coordinate.r))
             push!(co_passing_inds,io)
             co_passing_num += 1
