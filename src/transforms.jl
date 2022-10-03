@@ -185,10 +185,20 @@ function eprz_dist(M::AbstractEquilibrium, OS::OrbitSystem, f::Vector, orbs, sig
     return epr2ps_covariance_splined(M,OS.S_inv, f, orbs, sigma;Js=Js,energy=energy,pitch=pitch,r=r,z=z,distributed=distributed, atol=atol, domain_check=domain_check, covariance=covariance, norms=norms,checkpoint=checkpoint, warmstart=warmstart,file=file, kwargs...)
 end
 
+"""
+    epr2ps(F_os_VEC::Vector{Float64},og,PS_orbs::Vector{GCEPRCoordinate}; sharedArray::Bool=false, topological_force=true, mislabelled=false, distributed=false, rescale_factor=0.0)
+
+Transforms an orbit-space distribution to particle-space by assuming the orbit-space distribution is piecewise-constant. Set topological_force=true to reduce error from  binning across orbit-class boundaries. Runs fastest with sharedArray, distributed = false (default settings). Additional binning information provided by mislabelled=true. The mean distribution value of the transformed distribution is set by rescale_factor (defaults to no rescaling).
+"""
 function epr2ps(F_os_VEC::Vector{Float64},og,PS_orbs::Vector{GCEPRCoordinate}; sharedArray::Bool=false, topological_force=true, mislabelled=false, distributed=false, rescale_factor=0.0)
     return epr2ps(F_os_VEC::Vector{Float64},og.energy,og.pitch,og.r,PS_orbs,og.orbit_index,og.class; topological_force=topological_force, mislabelled=mislabelled, distributed=distributed, rescale_factor=rescale_factor)
 end
 
+"""
+    epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitch::AbstractVector{Float64},or::AbstractVector{Float64},PS_orbs::Vector{GCEPRCoordinate},og_orbit_index::Array{Int,3},og_class::Array{Symbol,3}; sharedArray::Bool=false, topological_force::Bool=true, mislabelled::Bool=false, distributed::Bool=false, rescale_factor=0.0)
+
+Transforms an orbit-space distribution to particle-space by assuming the orbit-space distribution is piecewise-constant. Set topological_force=true to reduce error from  binning across orbit-class boundaries. Runs fastest with sharedArray, distributed = false (default settings). Additional binning information provided by mislabelled=true. The mean distribution value of the transformed distribution is set by rescale_factor (defaults to no rescaling).
+"""
 function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitch::AbstractVector{Float64},or::AbstractVector{Float64},PS_orbs::Vector{GCEPRCoordinate},og_orbit_index::Array{Int,3},og_class::Array{Symbol,3}; sharedArray::Bool=false, topological_force::Bool=true, mislabelled::Bool=false, distributed::Bool=false, rescale_factor=0.0)
     og_class = class_char.(og_class)
 
@@ -733,6 +743,12 @@ function epr2ps(F_os_VEC::Vector{Float64},oenergy::AbstractVector{Float64},opitc
     end
 end
 
+"""
+    epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}, norms::Vector{Float64}; single_E::Bool=false, verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...)
+
+Transforms an orbit-space distribution to particle-space using polyharmonic splines. This is very slow for large orbit-space grids - single_E=true calls epr2ps_splined_singleE instead. 
+The mean distribution value of the transformed distribution is set by rescale_factor (defaults to no rescaling). k is the degree of the polyharmonic basis function. norms provides relative scaling of the distance between grid points in each of the three dimensions in orbit-space. Defaults to identical scaling for each dimension. 
+"""
 function epr2ps_splined(F_os_VEC::Vector{Float64}, og, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
     if length(og.energy)==1
         single_E = true
@@ -745,6 +761,12 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, og, orbs::Union{Vector{Orbit{
     return epr2ps_splined(F_os_VEC, orbs, PS_orbs, norms; single_E=single_E, verbose=verbose, distributed=distributed, k=k, overlap=overlap, stiffness_factor=stiffness_factor, rescale_factor=rescale_factor, kwargs...) 
 end
 
+"""
+    epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}, norms::Vector{Float64}; single_E::Bool=false, verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...)
+
+Transforms an orbit-space distribution to particle-space using polyharmonic splines. This is very slow for large orbit-space grids - single_E=true calls epr2ps_splined_singleE instead. 
+The mean distribution value of the transformed distribution is set by rescale_factor (defaults to no rescaling). k is the degree of the polyharmonic basis function. norms provides relative scaling of the distance between grid points in each of the three dimensions in orbit-space. Defaults to identical scaling for each dimension. 
+"""
 function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}, norms::Vector{Float64}; single_E::Bool=false, verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
     single_E && (return epr2ps_splined_singleE(F_os_VEC, orbs, PS_orbs, norms; verbose=verbose, distributed=distributed, k=k, overlap=overlap, stiffness_factor=stiffness_factor, rescale_factor=rescale_factor, kwargs...))
     ctr_passing_spline, trapped_spline, co_passing_spline = class_splines(orbs,F_os_VEC,k; stiffness_factor=stiffness_factor, single_E=false, norms=norms, kwargs...)
@@ -786,6 +808,12 @@ function epr2ps_splined(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Floa
     return vec(PS_dist)
 end
 
+"""
+    epr2ps_splined_singleE(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}, norms::Vector{Float64}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...)
+
+Transforms an orbit-space distribution to particle-space using polyharmonic splines. One set of splines is used for each energy value. Use identical energy values in the particle-space grid being transformed to, and run ps_cleaner and ps_energyfix upon completion. 
+The mean distribution value of the transformed distribution is set by rescale_factor (defaults to no rescaling). k is the degree of the polyharmonic basis function. norms provides relative scaling of the distance between grid points in each of the three dimensions in orbit-space. Defaults to identical scaling for each dimension. 
+"""
 function epr2ps_splined_singleE(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, PS_orbs::Vector{GCEPRCoordinate}, norms::Vector{Float64}; verbose=true, distributed=false, k::Int=2, overlap=true, stiffness_factor::Float64=0.0, rescale_factor= 0.0, kwargs...) 
     ctr_passing_spline, trapped_spline, co_passing_spline = class_splines(orbs,F_os_VEC,k; stiffness_factor=stiffness_factor, single_E=true, norms=norms, kwargs...)
 
@@ -826,6 +854,11 @@ function epr2ps_splined_singleE(F_os_VEC::Vector{Float64}, orbs::Union{Vector{Or
     return vec(PS_dist)
 end
 
+"""
+    class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, F_os_VEC::Vector{Float64}, k::Int; norms::Vector{Float64}=Float64[], single_E::Bool=false, filename_prefactor::String = "", read_save_splines::Bool = false, read_save_centers::Bool = false, spline_read_write_dir::String = "", center_read_write_dir::String = "", stiffness_factor::Float64=0.0, verbose::Bool=true)
+
+Generates polyharmonic splines for each set of arbits after first calling orbsort. Can read save or read the splines straight from file using filename_prefactor, read_save_splines=true, and spline_read_write_dir.
+"""
 function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, F_os_VEC::Vector{Float64}, k::Int; norms::Vector{Float64}=Float64[], single_E::Bool=false, filename_prefactor::String = "", read_save_splines::Bool = false, read_save_centers::Bool = false, spline_read_write_dir::String = "", center_read_write_dir::String = "", stiffness_factor::Float64=0.0, verbose::Bool=true)  
     single_E && (filename_prefactor = string(filename_prefactor,"SingleE"))
     if isempty(norms)
@@ -890,6 +923,11 @@ function class_splines(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}
     return ctr_passing_spline, trapped_spline, co_passing_spline
 end
 
+"""
+    ps_polyharmonic_spline(PS_orbs::Vector{GCEPRCoordinate}, F_ps_Weights::Vector{Float64};  fpsorbs_2_matrix=x->psorbs_2_matrix(x), k::Int=2, verbose::Bool=true, read_save_prefactor::String = "", read_save_centers::Bool = false, read_save_spline::Bool = false, stiffness_factor::Float64=0.0)
+
+Generates polyharmonic spline for a vector of GCEPRCoordinates and their corresponding distribution values. Can read save or read the spline straight from file using read_save_prefactor and read_save_spline=true.
+"""
 function ps_polyharmonic_spline(PS_orbs::Vector{GCEPRCoordinate}, F_ps_Weights::Vector{Float64};  fpsorbs_2_matrix=x->psorbs_2_matrix(x), k::Int=2, verbose::Bool=true, read_save_prefactor::String = "", read_save_centers::Bool = false, read_save_spline::Bool = false, stiffness_factor::Float64=0.0)
 
     spline_filename = string(read_save_prefactor,"ps_polyspline.jld2")
@@ -926,6 +964,11 @@ function ps_polyharmonic_spline(PS_orbs::Vector{GCEPRCoordinate}, F_ps_Weights::
     return spline
 end
 
+"""
+    orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}},single_E::Bool)
+
+Sorts vector of orbits into three sets of classes, and converts their coordinates into a matrix to generate polyharmonic splines. Three sets of classes are 1: counter passing, 2: co-passing, potato and stagnation, and 3: trapped, potato and stagnation. 
+"""
 function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}},single_E::Bool)  
     single_E && (return orbsort_singleE(orbs)) 
 
@@ -941,17 +984,17 @@ function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vect
     co_passing_num = 0
 
     @showprogress for (io,i) in enumerate(orbs)
-        if (i.class == :ctr_passing || (i.coordinate.pitch<0.0 && i.class == :stagnation))
+        if i.class == :ctr_passing 
             push!(ctr_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r)) #is this efficient?
             push!(ctr_passing_inds,io)
             ctr_passing_num += 1
         end
-        if (i.class == :trapped || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
+        if (i.class == :trapped || i.class == :stagnation || i.class == :potato) 
             push!(trapped_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
             push!(trapped_inds,io)
             trapped_num += 1
         end
-        if (i.class == :co_passing || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
+        if (i.class == :co_passing || i.class == :stagnation || i.class == :potato) 
             push!(co_passing_points,SVector{3}(i.coordinate.energy,i.coordinate.pitch,i.coordinate.r))
             push!(co_passing_inds,io)
             co_passing_num += 1
@@ -966,6 +1009,11 @@ function orbsort(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vect
     return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
 end
 
+"""
+    orbsort_v2(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}},single_E::Bool)
+
+Alternate version of orbsort, where the three sets of classes are 1: counter passing and stagnation (pitch < 0), 2: co-passing, potato and stagnation (pitch > 0), and 3: trapped, potato and stagnation (pitch > 0). Introduces more error than orbsort.
+"""
 function orbsort_v2(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}},single_E::Bool)  
     single_E && (return orbsort_singleE(orbs)) 
 
@@ -1006,6 +1054,11 @@ function orbsort_v2(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},V
     return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
 end
 
+"""
+    orbsort_singleE(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}})
+
+Sorts vector of orbits into three sets of classes, and converts their coordinates (minus energy) into a matrix to generate polyharmonic splines. Three sets of classes are 1: counter passing, 2: co-passing, potato and stagnation, and 3: trapped, potato and stagnation. 
+"""
 function orbsort_singleE(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}})  
     ctr_passing_points = SVector{2, Float64}[]
     ctr_passing_inds = Int[]
@@ -1019,17 +1072,17 @@ function orbsort_singleE(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64
     co_passing_num = 0
 
     @showprogress for (io,i) in enumerate(orbs)
-        if (i.class == :ctr_passing || (i.coordinate.pitch<0.0 && i.class == :stagnation))
+        if i.class == :ctr_passing
             push!(ctr_passing_points,SVector{2}(i.coordinate.pitch,i.coordinate.r)) #is this efficient?
             push!(ctr_passing_inds,io)
             ctr_passing_num += 1
         end
-        if (i.class == :trapped || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
+        if (i.class == :trapped || i.class == :stagnation || i.class == :potato)
             push!(trapped_points,SVector{2}(i.coordinate.pitch,i.coordinate.r))
             push!(trapped_inds,io)
             trapped_num += 1
         end
-        if (i.class == :co_passing || (i.class == :stagnation && i.coordinate.pitch>0.0) || i.class == :potato)
+        if (i.class == :co_passing || i.class == :stagnation || i.class == :potato)
             push!(co_passing_points,SVector{2}(i.coordinate.pitch,i.coordinate.r))
             push!(co_passing_inds,io)
             co_passing_num += 1
@@ -1044,6 +1097,11 @@ function orbsort_singleE(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64
     return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
 end
 
+"""
+    orbsort_singleE_v2(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}})
+
+Alternate version of orbsort_singleE, where the three sets of classes are 1: counter passing and stagnation (pitch < 0), 2: co-passing, potato and stagnation (pitch > 0), and 3: trapped, potato and stagnation (pitch > 0). Introduces more error than orbsort.
+"""
 function orbsort_singleE_v2(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit{Float64}},Vector{Orbit}})  
     ctr_passing_points = SVector{2, Float64}[]
     ctr_passing_inds = Int[]
@@ -1082,6 +1140,14 @@ function orbsort_singleE_v2(orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Floa
     return ctr_passing_points,trapped_points,co_passing_points,ctr_passing_inds,trapped_inds,co_passing_inds
 end
 
+"""
+    epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, psgrid::PSGrid, sigma;
+                            distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
+                            covariance=:local, norms=S3(1.0,1.0,1.0),
+                            checkpoint=true, warmstart=false,file="eprz_progress.jld2",  rescale_factor= 0.0, kwargs...) 
+
+Transforms an orbit-space distribution to particle-space using the covariance spline with PSGrid as an input. See epr2ps_covariance_splined below for full description.
+"""
 function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, psgrid::PSGrid, sigma;
                             distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
                             covariance=:local, norms=S3(1.0,1.0,1.0),
@@ -1104,6 +1170,20 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return F_ps_VEC
 end
 
+"""
+    epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, sigma;
+                            Js=Vector{Vector{Float64}}[],
+                            energy=range(1.0,80.0,length=25),
+                            pitch=range(-0.99,0.99,length=25),
+                            r = range(limits(M)[1]...,length=25),
+                            z = range(limits(M)[2]...,length=25),
+                            distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
+                            covariance=:local, norms=S3(1.0,1.0,1.0),
+                            checkpoint=true, warmstart=false,file="eprz_progress.jld2", kwargs...)
+
+Transforms an orbit-space distribution to particle-space using the covariance spline. This involves calculating a particle-space point’s orbit, and its ‘similarity’ with all other orbits in the orbit-grid; the similarity between two orbits is a measure of how alike the orbit paths are in particle-space, and it is found by integrating both orbit paths in particle-space while passing the distance in 4D {E, p, R, Z} space between the two particles through a gaussian kernel (see function get_covariance, line 310 in covariance.jl).
+Requires input of characteristic distances in E,p,R,Z space for the gaussian kernel. Input as 4-component vector sigma.
+"""
 function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{Float64}, F_os_VEC::Vector, orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, sigma;
                             Js=Vector{Vector{Float64}}[],
                             energy=range(1.0,80.0,length=25),
@@ -1193,6 +1273,13 @@ function epr2ps_covariance_splined(M::AbstractEquilibrium, S_inv::AbstractArray{
     return EPRZDensity(f_eprz,energy,pitch,r,z)
 end
 
+"""
+    ps_cleaner(F_ps_Weights::Vector{Float64},  psgrid::PSGrid; zbounds = [0.0,0.0], PS_orbs=nothing, class_specific::Bool=false, threshold::Float64=0.0, num0::Int=0, rescale_factor::Number = 1.0, E_range::Int=0, range::Int=1)
+
+Run on a distribution after transforming from orbit-space to particle-space.
+Smooths over large transformed values by assigning them the average of their nearest neighbours in particle-space. This is either done automatically to the largest n values by setting num0=n, or automatically to all values above threshold, or manually (default setting).
+Sets negative distibution values and NaNs to 0 - these are caused by the polyharmonic spline transform. Removes the influence of orbits with Z_m far off the main axis, including orbits that appear in the divertor region. The mean distribution value is set by rescale_factor (defaults to no rescaling).
+"""
 function ps_cleaner(F_ps_Weights::Vector{Float64},  psgrid::PSGrid; zbounds = [0.0,0.0], PS_orbs=nothing, class_specific::Bool=false, threshold::Float64=0.0, num0::Int=0, rescale_factor::Number = 1.0, E_range::Int=0, range::Int=1) where {T}
     F_ps_Weights = [isnan(i) ? 0.0 : i for i in F_ps_Weights] #Removing Nans
     F_ps_Weights = [i < 0.0 ? 0.0 : i for i in F_ps_Weights]  #Removing negative values
@@ -1274,6 +1361,11 @@ function ps_cleaner(F_ps_Weights::Vector{Float64},  psgrid::PSGrid; zbounds = [0
     return F_ps_Weights,old_values,new_values,surrounding_classes,surrounding_values,uncleaned
 end
 
+"""
+    ps_energyfix(F_ps_Weights::Vector{Float64}, F_os_VEC::Vector{Float64}, og::Union{OrbitGrid{T},OrbitGrid},  psgrid::PSGrid; F_ps_Weights0::Vector{Float64}=Float64[], ps_Efix::Bool=false, info::Bool=false, rescale_factor::Number = 1.0) where {T}
+
+Run on a distribution after transforming from orbit-space to particle-space energy-slice by energy-slice. Rescales the different energy slices according to the orbit-space energy distribution. Can also re-scale according to the energy distribution of a reference particle-space distribution. The mean distribution value is set by rescale_factor (defaults to no rescaling).
+"""
 function ps_energyfix(F_ps_Weights::Vector{Float64}, F_os_VEC::Vector{Float64}, og::Union{OrbitGrid{T},OrbitGrid},  psgrid::PSGrid; F_ps_Weights0::Vector{Float64}=Float64[], ps_Efix::Bool=false, info::Bool=false, rescale_factor::Number = 1.0) where {T}
     length(psgrid.energy) != length(og.energy) && throw(DimensionMismatch())
     scales = zeros(Float64,length(psgrid.energy))
@@ -1297,6 +1389,11 @@ function ps_energyfix(F_ps_Weights::Vector{Float64}, F_os_VEC::Vector{Float64}, 
     return F_ps_Weights
 end
 
+"""
+    ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0)
+
+Transforms an EPRZ distribution to 3D orbit-space by assuming it's piecewise constant. Slightly slower and less accurate than ps2epr_bsplined. bin_info=true provides information on the number of bins each orbit in orbit-space spans in particle-space. jac_info=true outputs the average jacobian along each orbit-space orbit's path. Returns the orbit-space distribution in vector form.
+"""
 function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; bin_info = false, jac_info = false,  distributed=false, rescale_factor=0.0) 
     length(size(F_ps_Weights))>1 ? (matrix_input=true) :  (matrix_input=false)
 
@@ -1471,6 +1568,11 @@ function ps2epr(F_ps_Weights::AbstractArray{Float64},PS_Grid::PSGrid, og_orbs::U
     return vec(F_os_VEC)
 end
 
+"""
+    ps2epr_polysplined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; distributed=false, rescale_factor=0.0, verbose=true, kwargs...)
+
+Transforms an EPRZ distribution to 3D orbit-space, using polyharmonic splines. Fatally slow, use ps2epr_bsplined instead.
+"""
 function ps2epr_polysplined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPRCoordinate}, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; distributed=false, rescale_factor=0.0, verbose=true, kwargs...)  #vers=2 slightly faster for small batches, will confirm which better large scale on cluster
     num_psorbs = length(PS_orbs)
 
@@ -1522,7 +1624,12 @@ function ps2epr_polysplined(F_ps_Weights::Vector{Float64}, PS_orbs::Vector{GCEPR
     return vec(os_dist)
 end
 
-#MUST debug distributed version
+"""
+    ps2epr_bsplined(F_ps_Weights::Vector{Float64}, psgrid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, og::Union{OrbitGrid{T},OrbitGrid}; spline_type = BSpline(Cubic(Flat(OnCell()))), distributed::Bool=false, rescale_factor=0.0, use_slice_E::Bool=true, verbose=true, psgridEprefactor = "", gcvalid_check::Bool=false)
+
+Transforms an EPRZ distribution to 3D orbit-space, using an ongrid bspline (see Interpolations.jl).
+Fastest and most accurate ps2epr transform. distributed=false is faster. The mean distribution value is set by rescale_factor (defaults to no rescaling). use_slice_E creates a 3D spline for each energy value. This isn't necessary for all but the largest grids.
+"""
 function ps2epr_bsplined(F_ps_Weights::Vector{Float64}, psgrid::PSGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}, og::Union{OrbitGrid{T},OrbitGrid}; spline_type = BSpline(Cubic(Flat(OnCell()))), distributed::Bool=false, rescale_factor=0.0, use_slice_E::Bool=true, verbose=true, psgridEprefactor = "", gcvalid_check::Bool=false) where {T}
     F_ps_WeightsMatrix = ps_VectorToMatrix(F_ps_Weights,psgrid)
 
@@ -1693,6 +1800,11 @@ function ps2epr_bsplined(F_ps_Weights::Vector{Float64}, psgrid::PSGrid, og_orbs:
     return vec(os_dist)
 end
 
+"""
+    psorbs_2_matrix(PS_orbs::Vector{GCEPRCoordinate})
+
+Converts a vector of PS_orbs to a matrix using a for loop.
+"""
 function psorbs_2_matrix(PS_orbs::Vector{GCEPRCoordinate}) #No difference vs psorbs_2_matrix_INV
     points = Array{Float64}(undef,length(PS_orbs),4)
     for i = 1:length(PS_orbs)
@@ -1701,6 +1813,11 @@ function psorbs_2_matrix(PS_orbs::Vector{GCEPRCoordinate}) #No difference vs pso
     return points
 end
 
+"""
+    psorbs_2_matrix_INV(PS_orbs::Vector{GCEPRCoordinate})
+
+Converts a vector of PS_orbs to a matrix using a for loop reversing indices order. 
+"""
 function psorbs_2_matrix_INV(PS_orbs::Vector{GCEPRCoordinate})
     points = Array{Float64}(undef,4,length(PS_orbs))
     for i = 1:length(PS_orbs)
@@ -1709,6 +1826,11 @@ function psorbs_2_matrix_INV(PS_orbs::Vector{GCEPRCoordinate})
     return points
 end
 
+"""
+    psorbs_2_matrix_StaticArray(PS_orbs::Vector{GCEPRCoordinate})
+
+Converts a vector of PS_orbs to a matrix by concatenating a vector of static arrays (slow). 
+"""
 function psorbs_2_matrix_StaticArray(PS_orbs::Vector{GCEPRCoordinate})
     points = SVector{4, Float64}[]
 
@@ -1719,6 +1841,11 @@ function psorbs_2_matrix_StaticArray(PS_orbs::Vector{GCEPRCoordinate})
     return copy(reshape(reinterpret(Float64, points), (4,length(PS_orbs))))
 end
 
+"""
+    psorbs_2_matrix_Darray(PS_orbs::Vector{GCEPRCoordinate})
+
+Converts a vector of PS_orbs to a matrix by using DistributedArrays. Works on cluster over multiple nodes.
+"""
 function psorbs_2_matrix_Darray(PS_orbs::Vector{GCEPRCoordinate}) #works slow on cluster
     num_psorbs = length(PS_orbs)
 
@@ -1732,6 +1859,11 @@ function psorbs_2_matrix_Darray(PS_orbs::Vector{GCEPRCoordinate}) #works slow on
     return points0
 end
 
+"""
+    psorbs_2_matrix_DarrayInner(PS_orbs::Vector{GCEPRCoordinate},points::DArray{Float64,2})
+
+Inner component of psorbs_2_matrix_Darray. Fills out local component of Darray.
+"""
 function psorbs_2_matrix_DarrayInner(PS_orbs::Vector{GCEPRCoordinate},points::DArray{Float64,2})
     @sync @distributed for j = 1:nworkers()
         local_part = localpart(points)
@@ -1741,7 +1873,13 @@ function psorbs_2_matrix_DarrayInner(PS_orbs::Vector{GCEPRCoordinate},points::DA
     end
 end
 
-function psorbs_2_matrix_DistributedForLoop(PS_orbs::Vector{GCEPRCoordinate}) #randomly crashed on cluster (killed)
+
+"""
+    psorbs_2_matrix_DistributedForLoop(PS_orbs::Vector{GCEPRCoordinate}) 
+
+Converts a vector of PS_orbs to a matrix using a distributed for loop. Slower than linear for loop.
+"""
+function psorbs_2_matrix_DistributedForLoop(PS_orbs::Vector{GCEPRCoordinate}) 
     points = @distributed (vcat) for i = 1:length(PS_orbs)
         [PS_orbs[i].energy,PS_orbs[i].pitch,PS_orbs[i].r,PS_orbs[i].z]'
     end
@@ -1749,9 +1887,15 @@ function psorbs_2_matrix_DistributedForLoop(PS_orbs::Vector{GCEPRCoordinate}) #r
 end
 
 """
-@everywhere using DistributedArrays
-points = dzeros(Float64,(length(PS_orbs),4),workers(),[nworkers(),1])
-SPMD.spmd(OrbitTomography.psorbs_2_matrix_DarraySPMD2,PS_orbs,points)
+    psorbs_2_matrix_DarraySPMD2(PS_orbs::Vector{GCEPRCoordinate}, points::DArray{Float64,2}) 
+
+Converts a vector of PS_orbs to a matrix using the DistributedArrays SPMD2 distributed kernel functionality. While not faster than a linear for loop for this application, this is a good introduction to this method.
+To run this function, call the following:
+"
+    @everywhere using DistributedArrays
+    points = dzeros(Float64,(length(PS_orbs),4),workers(),[nworkers(),1])
+    SPMD.spmd(OrbitTomography.psorbs_2_matrix_DarraySPMD2,PS_orbs,points)
+"
 """
 function psorbs_2_matrix_DarraySPMD2(PS_orbs::Vector{GCEPRCoordinate}, points::DArray{Float64,2}) #Fastest distributed method on cluster -> randomly crashed on cluster (killed)
     local_part = points[:L]
@@ -1760,7 +1904,12 @@ function psorbs_2_matrix_DarraySPMD2(PS_orbs::Vector{GCEPRCoordinate}, points::D
     end
 end
 
-#This breaks down on the cluster, see https://stackoverflow.com/questions/64802561/julia-sharedarray-with-remote-workers-becomes-a-0-element-array
+
+"""
+    psorbs_2_matrix_SharedArray(PS_orbs::Vector{GCEPRCoordinate})
+
+Converts a vector of PS_orbs to a matrix using a SharedArray. This is fast but requires a local distributed environment (all CPUs connected to the same node, no ssh tunneling). If not, breaks down (see https://stackoverflow.com/questions/64802561/julia-sharedarray-with-remote-workers-becomes-a-0-element-array)
+"""
 function psorbs_2_matrix_SharedArray(PS_orbs::Vector{GCEPRCoordinate})
     num_psorbs = length(PS_orbs)
 
@@ -1775,6 +1924,14 @@ function psorbs_2_matrix_SharedArray(PS_orbs::Vector{GCEPRCoordinate})
     return points0
 end
 
+"""
+    ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, psgrid::PSGrid, og::OrbitGrid;...
+
+Samples an EPRZ distribution to 3D orbit-space using ps2os_performance, using a PSGrid as an input.
+genuine_PS_weights = false will scale EPRZ distribution by R, the jacobian of transform from cartesian to cylindrical coordinates.
+
+Returns the orbit-space distribution in vector form, as well as the number of particles in the original orbit-space distribution (volume x distribution).
+"""
 function ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, psgrid::PSGrid, og::OrbitGrid; numOsamples::Int64, progress_prefactor = "_", two_pi_mod = false, genuine_PS_weights = false, verbose=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, saveProgress=true, kwargs...) 
     if length(size(F_ps_Weights)) == 1
         F_ps_Weights = ps_VectorToMatrix(F_ps_Weights,psgrid)
@@ -1783,6 +1940,14 @@ function ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_
     return ps2epr_sampled(M, wall, F_ps_Weights, psgrid.energy, psgrid.pitch, psgrid.r, psgrid.z, og; numOsamples=numOsamples, progress_prefactor = progress_prefactor, two_pi_mod = two_pi_mod, genuine_PS_weights = genuine_PS_weights, verbose=verbose, GCP = GCP, distributed=distributed, nbatch = nbatch, saveProgress=saveProgress, kwargs...) 
 end
 
+"""
+    ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, energy::AbstractVector{Float64}, pitch::AbstractVector{Float64}, R::AbstractVector{Float64}, Z::AbstractVector{Float64}, og::OrbitGrid;...
+    
+Samples an EPRZ distribution to 3D orbit-space using ps2os_performance.
+genuine_PS_weights = false will scale EPRZ distribution by R, the jacobian of transform from cartesian to cylindrical coordinates.
+
+Returns the orbit-space distribution in vector form, as well as the number of particles in the original orbit-space distribution (volume x distribution).
+"""
 function ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, energy::AbstractVector{Float64}, pitch::AbstractVector{Float64}, R::AbstractVector{Float64}, Z::AbstractVector{Float64}, og::OrbitGrid; numOsamples::Int64, progress_prefactor = "_", two_pi_mod = false, genuine_PS_weights = true, verbose=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, saveProgress=true, kwargs...) 
     if length(size(F_ps_Weights)) == 1
         error("Call ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_Weights::AbstractArray{Float64}, psgrid::PSGrid, og::OrbitGrid) with PSGrid.")
@@ -1842,8 +2007,10 @@ function ps2epr_sampled(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, F_ps_
 end
 
 """
-ps2os_performance(M, wall, fr, dvols, nfast, energy, pitch, R, Z, og; numOsamples=100_000)
-    #STUART MODIFIED Energy bounds (Search #^STUART MODIFIED)
+    ps2os_performance(M, wall, fr, dvols, nfast, energy, pitch, R, Z, og; numOsamples=100_000)
+    
+Working function that samples an EPRZ distribution to 3D orbit-space. 
+#STUART MODIFIED Energy bounds (Search #^STUART MODIFIED)
 """
 function ps2os_performance(M::AbstractEquilibrium, 
                             wall::Union{Nothing,Wall}, 
@@ -1987,7 +2154,7 @@ function performance_helper(M::AbstractEquilibrium, wall::Union{Nothing,Wall}, n
                 if good_sample
                     o = get_orbit(M,GCP(E_sample,M.sigma*p_sample,R_sample,Z_sample); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                     if (o.coordinate.energy <= (og.energy[end]+0.5*(og.energy[end]-og.energy[end-1]))) && (o.coordinate.energy >= (og.energy[1]-0.5*(og.energy[2]-og.energy[1]))) # Make sure it's within the energy bounds
-                        #^STUART MODIFIED, old one: if (o.coordinate.energy <= maximum(og.energy) && o.coordinate.energy >= minimum(og.energy))  
+                    #^STUART MODIFIED, old one: if (o.coordinate.energy <= maximum(og.energy) && o.coordinate.energy >= minimum(og.energy))  
                         F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0])) # Bin to the orbit grid
                     else
                         F_os_i = zeros(length(og.counts)) # Otherwise, zero
