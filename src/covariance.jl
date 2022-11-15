@@ -148,25 +148,13 @@ function Base.:(*)(A::RepeatedBlockDiagonal , a::Union{SparseVector{S,T},SparseM
     rowval2 = Array{Int}(undef,length(rowval))
     K = SparseMatrixCSC(size(A)..., colptr, rowval, vec(A.data))
 
-    p = Progress(A.n)
-    channel = RemoteChannel(()->Channel{Bool}(A.n), 1)
-    B = fetch(@sync begin
-        @async while take!(channel)
-            ProgressMeter.next!(p)
-        end
-        @async begin
-            B = @distributed (+) for i=1:A.n
-                circshift!(colptr2,colptr,(i-1)*nc)
-                rowval2 .= rowval .+ (i-1)*nr
-                K = SparseMatrixCSC(K.m,K.n,colptr2,rowval2, K.nzval)
-                Ka = K*a
-                put!(channel,true)
-                Ka
-            end
-            put!(channel, false)
-            B
-        end
-    end)
+    B = @showprogress @distributed (+) for i=1:A.n
+        circshift!(colptr2,colptr,(i-1)*nc)
+        rowval2 .= rowval .+ (i-1)*nr
+        K = SparseMatrixCSC(K.m,K.n,colptr2,rowval2, K.nzval)
+        Ka = K*a
+    end
+
     return B
 end
 
@@ -178,25 +166,13 @@ function Base.:(*)(a::Union{SparseVector{S,T},SparseMatrixCSC{S,T}}, A::Repeated
     rowval2 = Array{Int}(undef,length(rowval))
     K = SparseMatrixCSC(size(A)..., colptr, rowval, vec(A.data))
 
-    p = Progress(A.n)
-    channel = RemoteChannel(()->Channel{Bool}(A.n), 1)
-    B = fetch(@sync begin
-        @async while take!(channel)
-            ProgressMeter.next!(p)
-        end
-        @async begin
-            B = @distributed (+) for i=1:A.n
-                circshift!(colptr2,colptr,(i-1)*nc)
-                rowval2 .= rowval .+ (i-1)*nr
-                K = SparseMatrixCSC(K.m,K.n,colptr2,rowval2, K.nzval)
-                aK = a*K
-                put!(channel,true)
-                aK
-            end
-            put!(channel, false)
-            B
-        end
-    end)
+    B = @showprogress @distributed (+) for i=1:A.n
+        circshift!(colptr2,colptr,(i-1)*nc)
+        rowval2 .= rowval .+ (i-1)*nr
+        K = SparseMatrixCSC(K.m,K.n,colptr2,rowval2, K.nzval)
+        aK = a*K
+    end
+
     return B
 end
 
@@ -531,7 +507,7 @@ end
     get_covariance_matrix(M,orbits,sigma,Js,sparse=true,atol=1e-5,distributed=true)
 
 Calculate the covariance matrix for the orbits. Use the correlation lengths for the energy, pitch, R and Z provided in sigma.
-If provided, use the pre-calculated Jacobian Js to speed up computation, return a sparse matrix if sparse=true, use atol 
+Use the pre-calculated Jacobians in the orbits paths, or pre-provided in Js, to speed up computation. Return a sparse matrix if sparse=true, use atol 
 for the precision in computing the covariance between two orbits and use parallel computation if distributed=true.
 """
 function get_covariance_matrix(M::AbstractEquilibrium, orbits::Vector, sigma::AbstractVector;
@@ -544,7 +520,12 @@ function get_covariance_matrix(M::AbstractEquilibrium, orbits::Vector, sigma::Ab
     
     orbs = [OrbitSpline(o) for o in orbits] # For more info on OrbitSpline, see orbits.jl
 
-    if isempty(Js)
+    if !isempty(orbits[1].path.jacdets)
+        J = Array{Vector{Float64}}(undef, n)
+        for (io,o) in enumerate(orbits) 
+            J[io] = o.path.jacdets
+        end
+    elseif isempty(Js)
         J = Array{Vector{Float64}}(undef, n)
         @inbounds Threads.@threads for i=1:n
             oi = orbits[i]::Orbit
@@ -687,7 +668,12 @@ function get_covariance_matrix(M::AbstractEquilibrium, orbits_1::Vector, orbits_
     
     orbs1 = [OrbitSpline(o) for o in orbits_1]
 
-    if isempty(Js_1)
+    if isempty(Js_1) && (!isempty(orbits_1[1].path.jacdets))
+        J1 = Array{Vector{Float64}}(undef, n1)
+        @inbounds for (io,o) in enumerate(orbits_1) 
+            J1[io] = o.path.jacdets
+        end
+    elseif isempty(Js_1)
         J1 = Array{Vector{Float64}}(undef, n1)
         @inbounds Threads.@threads for i=1:n1
             oi = orbits_1[i]::Orbit
@@ -705,7 +691,12 @@ function get_covariance_matrix(M::AbstractEquilibrium, orbits_1::Vector, orbits_
     
     orbs2 = [OrbitSpline(o) for o in orbits_2]
 
-    if isempty(Js_2)
+    if isempty(Js_2) && (!isempty(orbits_2[1].path.jacdets))
+        J2 = Array{Vector{Float64}}(undef, n2)
+        @inbounds for (io,o) in enumerate(orbits_2) 
+            J2[io] = o.path.jacdets
+        end
+    elseif isempty(Js_2)
         J2 = Array{Vector{Float64}}(undef, n2)
         @inbounds Threads.@threads for i=1:n2
             oi = orbits_2[i]::Orbit

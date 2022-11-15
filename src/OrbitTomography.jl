@@ -9,9 +9,16 @@ using Distributed
 using Printf
 import Base.Iterators: partition
 
+using Reexport
+@reexport using GuidingCenterOrbits
+using SciMLBase
+using DiffEqBase
+using OrdinaryDiffEq
+using DifferentialEquations
+using DiffEqGPU
+using DistributedArrays
 using EFIT
 using Equilibrium
-using GuidingCenterOrbits
 using HDF5
 using JLD2, FileIO
 using Clustering
@@ -20,6 +27,7 @@ using StatsBase
 using FillArrays
 using ProgressMeter
 using NearestNeighbors
+using SharedArrays
 using SparseArrays
 using StaticArrays
 using NonNegLeastSquares
@@ -51,7 +59,7 @@ const B5_amu = 10.81 # amu
 const C6_amu = 12.011 # amu
 
 include("polyharmonic.jl")
-export PolyharmonicSpline
+export PolyharmonicSpline, PolyharmonicSplineInv, PolyharmonicSplineNorm, PolyharmonicSplineInvNorm
 
 include("spectra.jl")
 export InstrumentalResponse, kernel
@@ -70,11 +78,18 @@ export split_particles, fbm2mc
 export impurity_density, ion_density, weight_matrix
 
 include("orbits.jl")
-export OrbitGrid, orbit_grid, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
+export OrbitGrid, orbit_grid, energy_slice, segment_orbit_grid,combine_orbits, fbm2orbit, mc2orbit
 export map_orbits, bin_orbits
 export write_orbit_grid, read_orbit_grid
 export orbit_index, orbit_matrix
 export OrbitSpline
+
+include("psgrids.jl")
+export PSGrid, DET_GCPtoEPR, getGCEPRCoord, fill_PSGrid, fill_PSGrid_batch, reconstruct_GCEPRCoords, reconstruct_PSGrid, energy_slice
+export write_PSGrid, read_PSGrid, write_GCEPRCoords, read_GCEPRCoords, write_GCEPRCoordsMatrix, matrix_GCEPRCoords, read_GCEPRCoordsMatrix, ps_VectorToMatrix, ps_MatrixToVector
+
+include("gpu_grids.jl")
+export fill_PSGridGPU
 
 include("covariance.jl")
 export epr_cov
@@ -89,7 +104,8 @@ include("tomography.jl")
 export OrbitSystem, lcurve_point, lcurve, marginal_loglike, optimize_alpha!, estimate_rtol, optimize_parameters, inv_chol, solve
 
 include("transforms.jl")
-export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution
+export EPDensity, local_distribution, RZDensity, rz_profile, EPRZDensity, eprz_distribution, epr2ps, epr2ps_splined, ps2epr, ps2epr_splined, ps2epr_sampled, epr2ps_covariance_splined
+export orbsort, class_splines, ps_polyharmonic_spline, psorbs_2_matrix, psorbs_2_matrix_INV, psorbs_2_matrix_DistributedForLoop, ps_cleaner, ps_energyfix
 
 include("analytic.jl")
 export lnΔ_ee, lnΔ_ei, lnΔ_ii, slowing_down_time, critical_energy, approx_critical_energy

@@ -13,8 +13,14 @@ function Base.show(io::IO, og::OrbitGrid)
     print(io, "OrbitGrid: $(length(og.energy))×$(length(og.pitch))×$(length(og.r)):$(length(og.counts))")
 end
 
+"""
+    orbit_grid(M, eo, po, ro)
+
+Calculates and returns an orbit_grid and vector of orbits specified by three input vectors eo (energy), po (pitch_m) and ro (r_m). 
+If calculate_jacdets=true, the orbit path is calculated and stored, along with the jacobian determinant of the transform from orbit-space (E,pitch_m,R_m,t_m) to particle-space (E,pitch,R,Z).
+"""
 function orbit_grid(M::AbstractEquilibrium, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
-                    q = 1, amu = H2_amu, kwargs...)
+                    q = 1, amu = H2_amu, calculate_jacdets=false, tol=0.1, kwargs...)
 
     nenergy = length(eo)
     npitch = length(po)
@@ -28,32 +34,38 @@ function orbit_grid(M::AbstractEquilibrium, eo::AbstractVector, po::AbstractVect
     norbs = nenergy*npitch*nr
     subs = CartesianIndices((nenergy,npitch,nr))
 
-    p = Progress(norbs)
-    channel = RemoteChannel(()->Channel{Bool}(norbs), 1)
-    orbs = fetch(@sync begin
-        @async while take!(channel)
-            ProgressMeter.next!(p)
-        end
-        @async begin
-            orbs = @distributed (vcat) for i=1:norbs
-                ie,ip,ir = Tuple(subs[i])
-                c = EPRCoordinate(M,eo[ie],po[ip],ro[ir],q=q,amu=amu)
-                try
-                    o = get_orbit(M, c; kwargs...)
-                catch
-                    o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
-                end
+    orbs = @showprogress @distributed (vcat) for i=1:norbs
+        ie,ip,ir = Tuple(subs[i])
+        c = EPRCoordinate(M,eo[ie],po[ip],ro[ir],q=q,amu=amu)
 
+        o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
+
+        if calculate_jacdets 
+            try
+                o = get_orbit(M, c; store_path=true, kwargs...)
                 if o.class in (:incomplete,:invalid,:lost)
                     o = Orbit(o.coordinate,:incomplete)
+                else
+                    jacdets = GuidingCenterOrbits.get_jacobian(M,o,tol=tol)
+                    o = Orbit(o.coordinate,o.class,o.tau_p,o.tau_t,OrbitPath(o.path,jacdets),o.gcvalid)
                 end
-                put!(channel, true)
-                o
+            catch
+                o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
             end
-            put!(channel, false)
-            orbs
+        else
+            try
+                o = get_orbit(M, c; kwargs...)
+            catch
+                o = Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
+            end
+
+            if o.class in (:incomplete,:invalid,:lost)
+                o = Orbit(o.coordinate,:incomplete)
+            end
         end
-    end)
+
+        o
+    end
 
     for i=1:norbs
         class[subs[i]] = orbs[i].class
@@ -67,7 +79,53 @@ function orbit_grid(M::AbstractEquilibrium, eo::AbstractVector, po::AbstractVect
     orbit_index[grid_index] = 1:norbs
 
     return orbs, OrbitGrid(eo,po,ro,fill(1,norbs),orbit_index,class,tau_p,tau_t)
+end
 
+"""
+    energy_slice(og::OrbitGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; ind::Int=0, energy::Float64=0.0)
+
+Makes a smaller OrbitGrid at a single energy from an existing OrbitGrid. 
+"""
+function energy_slice(og::OrbitGrid, og_orbs::Union{Vector{Orbit{Float64, EPRCoordinate{Float64}}},Vector{Orbit},Vector{Orbit{Float64}}}; ind::Int=0, energy::Float64=0.0, verbose::Bool=true)
+    (ind==0 && energy==0.0) && error("Please specify an energy ind or value.")
+    if ind!=0
+        newenergy = Float64[]
+        push!(newenergy,og.energy[ind])
+    else 
+        ind = argmin(abs.(og.energy .- energy))
+        newenergy = Float64[]
+        push!(newenergy,og.energy[ind])
+        verbose && print(string("Energy delta = ",(og.energy[ind]-energy),"\n"))
+    end
+
+    nenergy = length(newenergy)
+    npitch = length(og.pitch)
+    nr = length(og.r)
+
+    norbs = nenergy*npitch*nr
+
+    class = fill(:incomplete,(nenergy,npitch,nr))
+    orbit_index = zeros(Int,nenergy,npitch,nr)
+    tau_t = zeros(Float64,nenergy,npitch,nr)
+    tau_p = zeros(Float64,nenergy,npitch,nr)
+
+    new_orbs = Orbit{Float64, EPRCoordinate{Float64}}[]
+    eInt_orbit_index = og.orbit_index[ind,:,:] #2D matrix
+
+    for (io,o) in enumerate(eInt_orbit_index)
+        if o!=0 
+            push!(new_orbs,og_orbs[o])
+            class[io]=og_orbs[o].class
+            tau_p[io] = og_orbs[o].tau_p
+            tau_t[io] = og_orbs[o].tau_t
+        end
+    end
+
+    grid_index = filter(i -> eInt_orbit_index[i] != 0, 1:norbs)
+    norbs = length(new_orbs)
+    orbit_index[grid_index] = 1:norbs
+
+    return new_orbs, OrbitGrid(newenergy,og.pitch,og.r,fill(1,norbs),orbit_index,class,tau_p,tau_t)
 end
 
 function segment_orbit_grid(M::AbstractEquilibrium, orbit_grid::OrbitGrid, orbits::Vector;
@@ -278,7 +336,7 @@ function get4DVols(E, p, R, Z)
     return dvols
 end
 
-function orbit_matrix(M::AbstractEquilibrium, grid::OrbitGrid, energy, pitch, r, z; kwargs...)
+function orbit_matrix(M::AbstractEquilibrium, grid::OrbitGrid, energy, pitch, r, z; m::Float64 = H2_amu*mass_u, q::Int = 1, kwargs...)
     nenergy = length(energy)
     npitch = length(pitch)
     nr = length(r)
@@ -287,29 +345,19 @@ function orbit_matrix(M::AbstractEquilibrium, grid::OrbitGrid, energy, pitch, r,
     subs = CartesianIndices((nenergy,npitch,nr,nz))
     nsubs = length(subs)
 
-    p = Progress(nsubs)
-    channel = RemoteChannel(()->Channel{Bool}(nsubs), 1)
-    R = fetch(@sync begin
-        @async while take!(channel)
-            ProgressMeter.next!(p)
+    R = @showprogress @distributed (hcat) for i=1:nsubs
+        ie,ip,ir,iz = Tuple(subs[i])
+        gcp = GCParticle(energy[ie],pitch[ip],r[ir],z[iz],m,q)
+        o = get_orbit(M,gcp;store_path=false,kwargs...)
+        Rcol = spzeros(norbits)
+        if !(o.class in (:lost,:incomplete)) && o.coordinate.r > magnetic_axis(M)[1]
+            oi = orbit_index(grid,o.coordinate)
+            (oi > 0) && (Rcol[oi] = 1.0)
         end
-        @async begin
-            R = @distributed (hcat) for i=1:nsubs
-                ie,ip,ir,iz = Tuple(subs[i])
-                gcp = GCParticle(energy[ie],pitch[ip],r[ir],z[iz])
-                o = get_orbit(M,gcp;store_path=false,kwargs...)
-                Rcol = spzeros(norbits)
-                if !(o.class in (:lost,:incomplete)) && o.coordinate.r > magnetic_axis(M)[1]
-                    oi = orbit_index(grid,o.coordinate)
-                    (oi > 0) && (Rcol[oi] = 1.0)
-                end
-                put!(channel,true)
-                Rcol
-            end
-            put!(channel,false)
-            R
-        end
-    end)
+
+        Rcol
+    end
+
     return R
 end
 
@@ -490,25 +538,13 @@ function combine_orbits(orbits)
 end
 
 function mc2orbit(M::AbstractEquilibrium, d::FIDASIMGuidingCenterParticles, GCP::T;  kwargs...) where T <: Function
-    p = Progress(d.npart)
-    channel = RemoteChannel(()->Channel{Bool}(d.npart),1)
+    orbs = @showprogress @distributed (vcat) for i=1:d.npart
+        o = get_orbit(M,GCP(d.energy[i],B0Ip_sign(M)*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
 
-    t = @sync begin
-        @async while take!(channel)
-            ProgressMeter.next!(p)
-        end
-
-        @async begin
-            orbs = @distributed (vcat) for i=1:d.npart
-                o = get_orbit(M,GCP(d.energy[i],B0Ip_sign(M)*d.pitch[i],d.r[i]/100,d.z[i]/100); kwargs...,store_path=false)
-                put!(channel,true)
-                o.coordinate
-            end
-            put!(channel,false)
-            orbs
-        end
+        o.coordinate
     end
-    return fetch(t)
+
+    return orbs
 end
 
 function fbm2orbit(M::AbstractEquilibrium,d::FIDASIMGuidingCenterFunction; GCP=GCDeuteron, n=1_000_000, kwargs...)
